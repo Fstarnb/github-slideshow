@@ -74,13 +74,32 @@
       gap: 16px;
       padding: 16px 24px 32px;
     }
-    .panel {
+    .panel { 
       background: rgba(15, 23, 42, 0.9);
       border: 1px solid rgba(148, 163, 184, 0.15);
       border-radius: 16px;
       box-shadow: 0 25px 45px rgba(0,0,0,0.35);
       overflow: hidden;
       position: relative;
+    }
+    .menu-overlay {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 50% 40%, rgba(14,165,233,0.12), rgba(15,23,42,0.9));
+      display: grid;
+      place-items: center;
+      z-index: 5;
+      backdrop-filter: blur(6px);
+    }
+    .menu-overlay.hidden { display: none; }
+    .menu-card {
+      background: rgba(17,24,39,0.92);
+      border: 1px solid rgba(148,163,184,0.2);
+      border-radius: 16px;
+      padding: 18px 20px 16px;
+      box-shadow: 0 18px 38px rgba(0,0,0,0.45);
+      max-width: 320px;
+      width: calc(100% - 32px);
     }
     canvas {
       width: 100%;
@@ -189,6 +208,17 @@
   </div>
   <div class="shell">
     <div class="panel" id="game-panel">
+      <div class="menu-overlay" id="start-menu">
+        <div class="menu-card">
+          <p class="muted" style="margin:0 0 6px">选择出战模式</p>
+          <h2 style="margin:0 0 8px">准备开战</h2>
+          <p style="margin:0 0 12px; color: var(--text);">单人或双人同屏，选好后进入战场。可以随时按 <strong>P</strong> 暂停，<strong>R</strong> 重开。</p>
+          <div class="actions">
+            <button class="btn" id="start-solo">单人模式</button>
+            <button class="btn" id="start-coop">双人协同</button>
+          </div>
+        </div>
+      </div>
       <div class="hud">
         <div class="stat-col">
           <div class="stat"><strong>玩家一</strong> 生命
@@ -198,7 +228,7 @@
             <div class="bar"><div id="energy-bar-p1" style="width:100%"></div></div>
           </div>
         </div>
-        <div class="stat-col">
+        <div class="stat-col" id="hud-p2">
           <div class="stat"><strong>玩家二</strong> 生命
             <div class="bar"><div id="health-bar-p2" style="width:100%"></div></div>
           </div>
@@ -253,6 +283,7 @@
     const energyBarP1 = document.getElementById('energy-bar-p1');
     const healthBarP2 = document.getElementById('health-bar-p2');
     const energyBarP2 = document.getElementById('energy-bar-p2');
+    const hudP2 = document.getElementById('hud-p2');
     const scoreEl = document.getElementById('score');
     const waveEl = document.getElementById('wave');
     const levelNameEl = document.getElementById('level-name');
@@ -263,9 +294,13 @@
     const pauseBtn = document.getElementById('toggle-pause');
     const mobileShoot = document.getElementById('mobile-shoot');
     const mobileDash = document.getElementById('mobile-dash');
+    const startMenu = document.getElementById('start-menu');
+    const startSolo = document.getElementById('start-solo');
+    const startCoop = document.getElementById('start-coop');
 
     const state = {
-      running: true,
+      running: false,
+      started: false,
       width: canvas.width,
       height: canvas.height,
       score: 0,
@@ -274,6 +309,7 @@
       combo: 0,
       lastTime: 0,
       difficulty: 'normal',
+      playerCount: 1,
       inputs: {
         p1: { up:false, down:false, left:false, right:false, shoot:false, dash:false },
         p2: { up:false, down:false, left:false, right:false, shoot:false, dash:false },
@@ -447,7 +483,7 @@
     function resetPlayers() {
       players.length = 0;
       players.push(createPlayer('p1', '#22c55e', '#e2e8f0'));
-      players.push(createPlayer('p2', '#38bdf8', '#c084fc'));
+      if (state.playerCount > 1) players.push(createPlayer('p2', '#38bdf8', '#c084fc'));
       const spawnPoints = [
         { x: state.width * 0.28, y: state.height * 0.65 },
         { x: state.width * 0.72, y: state.height * 0.65 },
@@ -489,7 +525,7 @@
     }
 
     function update(delta) {
-      if (!state.running) return;
+      if (!state.started || !state.running) { updateHud(); return; }
       const livingPlayers = players.filter(p => p.alive);
       if (livingPlayers.length === 0) { showGameOver(); state.running = false; return; }
 
@@ -664,7 +700,19 @@
       ctx.rotate(angle);
       ctx.fillStyle = color;
       ctx.beginPath();
-      ctx.roundRect(-size, -size, size * 2, size * 2, 8);
+      if (ctx.roundRect) {
+        ctx.roundRect(-size, -size, size * 2, size * 2, 8);
+      } else {
+        ctx.moveTo(-size + 8, -size);
+        ctx.lineTo(size - 8, -size);
+        ctx.quadraticCurveTo(size, -size, size, -size + 8);
+        ctx.lineTo(size, size - 8);
+        ctx.quadraticCurveTo(size, size, size - 8, size);
+        ctx.lineTo(-size + 8, size);
+        ctx.quadraticCurveTo(-size, size, -size, size - 8);
+        ctx.lineTo(-size, -size + 8);
+        ctx.quadraticCurveTo(-size, -size, -size + 8, -size);
+      }
       ctx.fill();
       ctx.fillStyle = turretColor;
       ctx.fillRect(size * 0.2, -6, size + 10, 12);
@@ -775,6 +823,7 @@
         energyBarP1.style.width = `${Math.max(0, p1.energy)}%`;
         healthBarP1.parentElement.parentElement.style.opacity = p1.alive ? 1 : 0.5;
       }
+      if (hudP2) hudP2.style.display = state.playerCount > 1 ? 'grid' : 'none';
       if (p2 && healthBarP2 && energyBarP2) {
         healthBarP2.style.width = `${Math.max(0, p2.health)}%`;
         energyBarP2.style.width = `${Math.max(0, p2.energy)}%`;
@@ -819,11 +868,12 @@
         case '.': state.inputs.p2.shoot = pressed; break;
         case '/': state.inputs.p2.dash = pressed; break;
         case 'p': if (pressed) togglePause(); break;
-        case 'r': if (pressed) resetGame(); break;
+        case 'r': if (pressed) { state.started ? resetGame() : startGame(state.playerCount > 1 ? 'coop' : 'solo'); } break;
       }
     }
 
     function togglePause() {
+      if (!state.started) return;
       state.running = !state.running;
       pauseBtn.textContent = state.running ? '暂停 / 继续' : '已暂停，继续战斗';
     }
@@ -831,12 +881,14 @@
     function setupControls() {
       window.addEventListener('keydown', (e) => { handleKey(e, true); });
       window.addEventListener('keyup', (e) => { handleKey(e, false); });
-      restartBtn.addEventListener('click', resetGame);
+      restartBtn.addEventListener('click', () => startGame(state.playerCount > 1 ? 'coop' : 'solo'));
       pauseBtn.addEventListener('click', togglePause);
       difficultySelect.addEventListener('change', (e) => {
         state.difficulty = e.target.value;
-        resetGame();
+        if (state.started) resetGame();
       });
+      startSolo?.addEventListener('click', () => startGame('solo'));
+      startCoop?.addEventListener('click', () => startGame('coop'));
       mobileShoot?.addEventListener('click', () => state.inputs.p1.shoot = true);
       mobileDash?.addEventListener('click', () => state.inputs.p1.dash = true);
 
@@ -888,6 +940,14 @@
       }
     }
 
+    function startGame(mode = 'solo') {
+      state.playerCount = mode === 'coop' ? 2 : 1;
+      state.started = true;
+      state.running = true;
+      startMenu?.classList.add('hidden');
+      resetGame();
+    }
+
     function resize() {
       const rect = canvas.getBoundingClientRect();
       const ratio = window.devicePixelRatio || 1;
@@ -901,9 +961,9 @@
 
     window.addEventListener('resize', resize);
 
-    resetGame();
     resize();
     setupControls();
+    startMenu?.classList.remove('hidden');
     requestAnimationFrame(loop);
   </script>
 </body>
