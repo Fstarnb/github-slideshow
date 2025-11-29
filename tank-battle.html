@@ -93,22 +93,26 @@
       top: 12px;
       left: 12px;
       right: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 8px;
       pointer-events: none;
       font-weight: 600;
+      align-items: start;
     }
     .stat {
       padding: 8px 12px;
-      background: rgba(17, 24, 39, 0.8);
+      background: rgba(17, 24, 39, 0.86);
       border-radius: 10px;
       border: 1px solid rgba(148, 163, 184, 0.2);
       box-shadow: 0 8px 18px rgba(0,0,0,0.35);
       display: inline-flex;
       align-items: center;
       gap: 8px;
+      min-height: 44px;
     }
+    .stat-col { display: grid; gap: 6px; }
+    .stat strong { color: #fbbf24; font-size: 13px; letter-spacing: 0.5px; }
     .bar {
       flex: 1;
       height: 10px;
@@ -179,18 +183,28 @@
     <div class="tag">真·纯前端，无需安装，随时开战！</div>
   </header>
   <div class="legend">
-    <div class="tag">WASD / ↑↓←→ 移动与转向</div>
-    <div class="tag">空格射击 · Shift 冲刺 · P 暂停</div>
+    <div class="tag">玩家一：WASD 移动/转向 · 空格射击 · Shift 冲刺</div>
+    <div class="tag">玩家二：方向键移动/转向 · . 射击 · / 冲刺</div>
     <div class="tag">每波敌人更强，拾取能量包保命</div>
   </div>
   <div class="shell">
     <div class="panel" id="game-panel">
       <div class="hud">
-        <div class="stat">生命
-          <div class="bar"><div id="health-bar" style="width:100%"></div></div>
+        <div class="stat-col">
+          <div class="stat"><strong>玩家一</strong> 生命
+            <div class="bar"><div id="health-bar-p1" style="width:100%"></div></div>
+          </div>
+          <div class="stat">能量
+            <div class="bar"><div id="energy-bar-p1" style="width:100%"></div></div>
+          </div>
         </div>
-        <div class="stat">能量
-          <div class="bar"><div id="energy-bar" style="width:100%"></div></div>
+        <div class="stat-col">
+          <div class="stat"><strong>玩家二</strong> 生命
+            <div class="bar"><div id="health-bar-p2" style="width:100%"></div></div>
+          </div>
+          <div class="stat">能量
+            <div class="bar"><div id="energy-bar-p2" style="width:100%"></div></div>
+          </div>
         </div>
         <div class="stat">分数 <span id="score">0</span></div>
         <div class="stat">波次 <span id="wave">1</span></div>
@@ -235,8 +249,10 @@
   <script>
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
-    const healthBar = document.getElementById('health-bar');
-    const energyBar = document.getElementById('energy-bar');
+    const healthBarP1 = document.getElementById('health-bar-p1');
+    const energyBarP1 = document.getElementById('energy-bar-p1');
+    const healthBarP2 = document.getElementById('health-bar-p2');
+    const energyBarP2 = document.getElementById('energy-bar-p2');
     const scoreEl = document.getElementById('score');
     const waveEl = document.getElementById('wave');
     const levelNameEl = document.getElementById('level-name');
@@ -258,7 +274,10 @@
       combo: 0,
       lastTime: 0,
       difficulty: 'normal',
-      inputs: { up:false, down:false, left:false, right:false, shoot:false, dash:false },
+      inputs: {
+        p1: { up:false, down:false, left:false, right:false, shoot:false, dash:false },
+        p2: { up:false, down:false, left:false, right:false, shoot:false, dash:false },
+      },
     };
 
     const difficulties = {
@@ -277,9 +296,10 @@
       energy: 100,
       fireCooldown: 0,
       dashCooldown: 0,
+      alive: true,
     };
 
-    const player = { ...playerDefaults };
+    const players = [];
     const bullets = [];
     const enemies = [];
     const particles = [];
@@ -336,12 +356,43 @@
       };
     }
 
+    function createPlayer(id, color, turretColor) {
+      return { id, color, turretColor, ...playerDefaults };
+    }
+
+    function isFreeSpot(x, y, radius, self) {
+      if (x < radius || x > state.width - radius || y < radius || y > state.height - radius) return false;
+      const hitsObstacle = obstacles.some(ob => circleRectCollision(x, y, radius, ob));
+      const hitsPlayer = players.some(p => p !== self && p.alive && Math.hypot(p.x - x, p.y - y) < radius * 2);
+      return !hitsObstacle && !hitsPlayer;
+    }
+
+    function findSafeSpawn(preferred, radius = 28, self) {
+      for (let attempt = 0; attempt < 24; attempt++) {
+        const ang = Math.random() * Math.PI * 2;
+        const dist = 20 + attempt * 10;
+        const x = Math.min(Math.max(radius, preferred.x + Math.cos(ang) * dist), state.width - radius);
+        const y = Math.min(Math.max(radius, preferred.y + Math.sin(ang) * dist), state.height - radius);
+        if (isFreeSpot(x, y, radius, self)) return { x, y };
+      }
+      return { x: Math.min(Math.max(radius, preferred.x), state.width - radius), y: Math.min(Math.max(radius, preferred.y), state.height - radius) };
+    }
+
     function buildLevel(index = 0) {
       const def = levelLayouts[index % levelLayouts.length];
       obstacles = def.layout.map(obstacleFromLayout);
       state.levelIndex = index % levelLayouts.length;
       levelNameEl.textContent = def.name;
       levelBriefEl.textContent = def.brief;
+      ensurePlayersSafe();
+    }
+
+    function ensurePlayersSafe() {
+      players.forEach(p => {
+        if (!p.alive) return;
+        const safe = findSafeSpawn({ x: p.x, y: p.y }, p.size, p);
+        p.x = safe.x; p.y = safe.y;
+      });
     }
 
     function circleRectCollision(cx, cy, r, rect) {
@@ -393,11 +444,29 @@
       }
     }
 
+    function resetPlayers() {
+      players.length = 0;
+      players.push(createPlayer('p1', '#22c55e', '#e2e8f0'));
+      players.push(createPlayer('p2', '#38bdf8', '#c084fc'));
+      const spawnPoints = [
+        { x: state.width * 0.28, y: state.height * 0.65 },
+        { x: state.width * 0.72, y: state.height * 0.65 },
+      ];
+      players.forEach((p, idx) => {
+        const safe = findSafeSpawn(spawnPoints[idx] || { x: state.width / 2, y: state.height / 2 }, p.size, p);
+        Object.assign(p, playerDefaults, safe, { angle: -Math.PI / 2, alive: true });
+      });
+    }
+
     function resetGame() {
-      Object.assign(player, playerDefaults, { x: canvas.width/2, y: canvas.height/2 });
       enemies.length = 0; bullets.length = 0; particles.length = 0; pickups.length = 0;
       state.score = 0; state.wave = 1; state.combo = 0; state.running = true; state.lastTime = 0;
       buildLevel(0);
+      resetPlayers();
+      state.inputs = {
+        p1: { up:false, down:false, left:false, right:false, shoot:false, dash:false },
+        p2: { up:false, down:false, left:false, right:false, shoot:false, dash:false },
+      };
       for (let i = 0; i < 5; i++) spawnEnemy();
       updateDifficultyUi();
     }
@@ -421,43 +490,45 @@
 
     function update(delta) {
       if (!state.running) return;
-      const dir = state.inputs;
-      const acceleration = 360;
-      let vx = 0, vy = 0;
-      if (dir.up) { vx += Math.cos(player.angle) * player.speed; vy += Math.sin(player.angle) * player.speed; }
-      if (dir.down) { vx -= Math.cos(player.angle) * player.speed * 0.6; vy -= Math.sin(player.angle) * player.speed * 0.6; }
-      if (dir.left) player.angle -= 2.6 * delta;
-      if (dir.right) player.angle += 2.6 * delta;
+      const livingPlayers = players.filter(p => p.alive);
+      if (livingPlayers.length === 0) { showGameOver(); state.running = false; return; }
 
-      // dash
-      if (dir.dash && player.dashCooldown <= 0 && player.energy >= 25) {
-        player.energy -= 25;
-        player.dashCooldown = 1.2;
-        vx = Math.cos(player.angle) * 900;
-        vy = Math.sin(player.angle) * 900;
-        for (let i = 0; i < 10; i++) addParticle(player.x, player.y, '#22d3ee');
-      }
+      livingPlayers.forEach(player => {
+        const dir = state.inputs[player.id] || {};
+        let vx = 0, vy = 0;
+        if (dir.up) { vx += Math.cos(player.angle) * player.speed; vy += Math.sin(player.angle) * player.speed; }
+        if (dir.down) { vx -= Math.cos(player.angle) * player.speed * 0.6; vy -= Math.sin(player.angle) * player.speed * 0.6; }
+        if (dir.left) player.angle -= 2.6 * delta;
+        if (dir.right) player.angle += 2.6 * delta;
 
-      const prevX = player.x;
-      const prevY = player.y;
-      player.x = Math.max(0, Math.min(state.width, player.x + vx * delta));
-      player.y = Math.max(0, Math.min(state.height, player.y + vy * delta));
-      const hitObstacle = obstacles.some(ob => circleRectCollision(player.x, player.y, player.size, ob));
-      if (hitObstacle) {
-        player.x = prevX;
-        player.y = prevY;
-      }
+        if (dir.dash && player.dashCooldown <= 0 && player.energy >= 25) {
+          player.energy -= 25;
+          player.dashCooldown = 1.2;
+          vx = Math.cos(player.angle) * 900;
+          vy = Math.sin(player.angle) * 900;
+          for (let i = 0; i < 10; i++) addParticle(player.x, player.y, '#22d3ee');
+        }
 
-      player.fireCooldown -= delta;
-      player.dashCooldown -= delta;
-      player.energy = Math.min(100, player.energy + delta * 8);
+        const prevX = player.x;
+        const prevY = player.y;
+        player.x = Math.max(player.size, Math.min(state.width - player.size, player.x + vx * delta));
+        player.y = Math.max(player.size, Math.min(state.height - player.size, player.y + vy * delta));
+        const hitObstacle = obstacles.some(ob => circleRectCollision(player.x, player.y, player.size, ob));
+        if (hitObstacle) {
+          player.x = prevX;
+          player.y = prevY;
+        }
 
-      if (dir.shoot && player.fireCooldown <= 0) {
-        player.fireCooldown = 0.25;
-        shoot(player, true);
-      }
+        player.fireCooldown -= delta;
+        player.dashCooldown -= delta;
+        player.energy = Math.min(100, player.energy + delta * 8);
 
-      // bullets
+        if (dir.shoot && player.fireCooldown <= 0) {
+          player.fireCooldown = 0.25;
+          shoot(player, true);
+        }
+      });
+
       for (let i = bullets.length - 1; i >= 0; i--) {
         const b = bullets[i];
         b.life -= delta;
@@ -480,20 +551,30 @@
           continue;
         }
         if (!b.friendly) {
-          const dist = Math.hypot(b.x - player.x, b.y - player.y);
-          if (dist < player.size) {
-            bullets.splice(i, 1);
-            player.health -= 12;
-            state.combo = 0;
-            for (let j = 0; j < 6; j++) addParticle(player.x, player.y, '#ef4444');
+          for (const player of players) {
+            if (!player.alive) continue;
+            const dist = Math.hypot(b.x - player.x, b.y - player.y);
+            if (dist < player.size) {
+              bullets.splice(i, 1);
+              damagePlayer(player, 12);
+              break;
+            }
           }
         }
       }
 
-      // enemies
       for (let i = enemies.length - 1; i >= 0; i--) {
         const e = enemies[i];
-        e.angle = Math.atan2(player.y - e.y, player.x - e.x);
+        let target = null;
+        let nearest = Infinity;
+        for (const player of players) {
+          if (!player.alive) continue;
+          const d = Math.hypot(player.x - e.x, player.y - e.y);
+          if (d < nearest) { nearest = d; target = player; }
+        }
+        if (!target) continue;
+
+        e.angle = Math.atan2(target.y - e.y, target.x - e.x);
         const ex = e.x + Math.cos(e.angle) * e.speed * delta;
         const ey = e.y + Math.sin(e.angle) * e.speed * delta;
         const willHit = obstacles.some(ob => circleRectCollision(ex, ey, e.size, ob));
@@ -508,11 +589,13 @@
           e.fireCooldown = e.reload;
         }
 
-        const distToPlayer = Math.hypot(e.x - player.x, e.y - player.y);
-        if (distToPlayer < e.size + player.size - 6) {
-          player.health -= 20 * delta;
-          state.combo = 0;
-        }
+        players.forEach(player => {
+          if (!player.alive) return;
+          const distToPlayer = Math.hypot(e.x - player.x, e.y - player.y);
+          if (distToPlayer < e.size + player.size - 6) {
+            damagePlayer(player, 20 * delta);
+          }
+        });
 
         for (let j = bullets.length - 1; j >= 0; j--) {
           const b = bullets[j];
@@ -534,21 +617,23 @@
         }
       }
 
-      // pickups
       for (let i = pickups.length - 1; i >= 0; i--) {
         const p = pickups[i];
         p.ttl -= delta;
         if (p.ttl <= 0) { pickups.splice(i, 1); continue; }
-        if (Math.hypot(p.x - player.x, p.y - player.y) < player.size + p.size) {
-          player.health = Math.min(100, player.health + 30);
-          player.energy = Math.min(100, player.energy + 40);
-          player.fireCooldown = Math.max(0, player.fireCooldown - 0.15);
-          pickups.splice(i, 1);
-          for (let k = 0; k < 10; k++) addParticle(player.x, player.y, '#fbbf24');
+        for (const player of players) {
+          if (!player.alive) continue;
+          if (Math.hypot(p.x - player.x, p.y - player.y) < player.size + p.size) {
+            player.health = Math.min(100, player.health + 30);
+            player.energy = Math.min(100, player.energy + 40);
+            player.fireCooldown = Math.max(0, player.fireCooldown - 0.15);
+            pickups.splice(i, 1);
+            for (let k = 0; k < 10; k++) addParticle(player.x, player.y, '#fbbf24');
+            break;
+          }
         }
       }
 
-      // particles
       for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
         p.life -= delta;
@@ -565,7 +650,7 @@
         if (Math.random() > 0.4) spawnPickup();
       }
 
-      if (player.health <= 0) {
+      if (!players.some(p => p.alive)) {
         state.running = false;
         showGameOver();
       }
@@ -667,7 +752,10 @@
       drawPickups();
       drawBullets();
       drawParticles();
-      drawTank(player.x, player.y, player.angle, '#0ea5e9', player.size);
+      players.forEach(p => {
+        if (!p.alive) return;
+        drawTank(p.x, p.y, p.angle, p.color, p.size, p.turretColor || '#e2e8f0');
+      });
       enemies.forEach(e => drawTank(e.x, e.y, e.angle, '#ef4444', e.size, '#fca5a5'));
     }
 
@@ -680,8 +768,18 @@
     }
 
     function updateHud() {
-      healthBar.style.width = `${Math.max(0, player.health)}%`;
-      energyBar.style.width = `${Math.max(0, player.energy)}%`;
+      const p1 = players[0];
+      const p2 = players[1];
+      if (p1 && healthBarP1 && energyBarP1) {
+        healthBarP1.style.width = `${Math.max(0, p1.health)}%`;
+        energyBarP1.style.width = `${Math.max(0, p1.energy)}%`;
+        healthBarP1.parentElement.parentElement.style.opacity = p1.alive ? 1 : 0.5;
+      }
+      if (p2 && healthBarP2 && energyBarP2) {
+        healthBarP2.style.width = `${Math.max(0, p2.health)}%`;
+        energyBarP2.style.width = `${Math.max(0, p2.energy)}%`;
+        healthBarP2.parentElement.parentElement.style.opacity = p2.alive ? 1 : 0.5;
+      }
       scoreEl.textContent = state.score;
       waveEl.textContent = state.wave;
       difficultyLabel.textContent = difficulties[state.difficulty].label;
@@ -708,12 +806,18 @@
 
     function handleKey(e, pressed) {
       switch(e.key.toLowerCase()) {
-        case 'w': case 'arrowup': state.inputs.up = pressed; break;
-        case 's': case 'arrowdown': state.inputs.down = pressed; break;
-        case 'a': case 'arrowleft': state.inputs.left = pressed; break;
-        case 'd': case 'arrowright': state.inputs.right = pressed; break;
-        case ' ': if (pressed) state.inputs.shoot = true; if (!pressed) state.inputs.shoot = false; break;
-        case 'shift': state.inputs.dash = pressed; break;
+        case 'w': state.inputs.p1.up = pressed; break;
+        case 's': state.inputs.p1.down = pressed; break;
+        case 'a': state.inputs.p1.left = pressed; break;
+        case 'd': state.inputs.p1.right = pressed; break;
+        case ' ': state.inputs.p1.shoot = pressed; break;
+        case 'shift': state.inputs.p1.dash = pressed; break;
+        case 'arrowup': state.inputs.p2.up = pressed; break;
+        case 'arrowdown': state.inputs.p2.down = pressed; break;
+        case 'arrowleft': state.inputs.p2.left = pressed; break;
+        case 'arrowright': state.inputs.p2.right = pressed; break;
+        case '.': state.inputs.p2.shoot = pressed; break;
+        case '/': state.inputs.p2.dash = pressed; break;
         case 'p': if (pressed) togglePause(); break;
         case 'r': if (pressed) resetGame(); break;
       }
@@ -733,8 +837,8 @@
         state.difficulty = e.target.value;
         resetGame();
       });
-      mobileShoot?.addEventListener('click', () => state.inputs.shoot = true);
-      mobileDash?.addEventListener('click', () => state.inputs.dash = true);
+      mobileShoot?.addEventListener('click', () => state.inputs.p1.shoot = true);
+      mobileDash?.addEventListener('click', () => state.inputs.p1.dash = true);
 
       const stick = document.getElementById('stick');
       if (stick) {
@@ -754,11 +858,11 @@
 
         function updateDir(dx, dy) {
           const ang = Math.atan2(dy, dx);
-          state.inputs.up = dy < -10;
-          state.inputs.down = dy > 10;
-          state.inputs.left = dx < -10;
-          state.inputs.right = dx > 10;
-          player.angle = ang;
+          state.inputs.p1.up = dy < -10;
+          state.inputs.p1.down = dy > 10;
+          state.inputs.p1.left = dx < -10;
+          state.inputs.p1.right = dx > 10;
+          if (players[0]) players[0].angle = ang;
         }
 
         function handlePointer(e) {
@@ -777,10 +881,10 @@
 
         stick.addEventListener('pointerdown', (e) => { active = true; handlePointer(e); });
         stick.addEventListener('pointermove', (e) => { if (active) handlePointer(e); });
-        window.addEventListener('pointerup', () => { active = false; knob = { ...center }; state.inputs.up = state.inputs.down = state.inputs.left = state.inputs.right = false; drawStick(); });
+        window.addEventListener('pointerup', () => { active = false; knob = { ...center }; state.inputs.p1.up = state.inputs.p1.down = state.inputs.p1.left = state.inputs.p1.right = false; drawStick(); });
         stick.addEventListener('touchstart', (e) => { active = true; handlePointer(e); });
         stick.addEventListener('touchmove', (e) => { if (active) handlePointer(e); });
-        window.addEventListener('touchend', () => { active = false; knob = { ...center }; state.inputs.up = state.inputs.down = state.inputs.left = state.inputs.right = false; drawStick(); });
+        window.addEventListener('touchend', () => { active = false; knob = { ...center }; state.inputs.p1.up = state.inputs.p1.down = state.inputs.p1.left = state.inputs.p1.right = false; drawStick(); });
       }
     }
 
