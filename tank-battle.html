@@ -216,6 +216,7 @@
           <div class="actions">
             <button class="btn" id="start-solo">单人模式</button>
             <button class="btn" id="start-coop">双人协同</button>
+            <button class="btn" id="start-pvp">双人对战</button>
           </div>
         </div>
       </div>
@@ -297,6 +298,7 @@
     const startMenu = document.getElementById('start-menu');
     const startSolo = document.getElementById('start-solo');
     const startCoop = document.getElementById('start-coop');
+    const startPvp = document.getElementById('start-pvp');
 
     const arenaPadding = 28;
 
@@ -311,6 +313,7 @@
       combo: 0,
       lastTime: 0,
       difficulty: 'normal',
+      mode: 'solo',
       playerCount: 1,
       inputs: {
         p1: { up:false, down:false, left:false, right:false, shoot:false, dash:false },
@@ -347,36 +350,46 @@
     const levelLayouts = [
       {
         name: '第一关 · 开阔练习场',
-        brief: '中央木墙与边缘石墙组合，适合练习绕障碍与迂回射击。',
+        brief: '石墙留出通道，木墙短隔断方便绕行与对射。',
         layout: [
-          { type: 'stone', px: 0.08, py: 0.15, pw: 0.84, ph: 0.04 },
-          { type: 'stone', px: 0.08, py: 0.81, pw: 0.84, ph: 0.04 },
-          { type: 'wood', px: 0.3, py: 0.38, pw: 0.4, ph: 0.03, hp: 70 },
-          { type: 'wood', px: 0.3, py: 0.55, pw: 0.4, ph: 0.03, hp: 70 },
-          { type: 'stone', px: 0.48, py: 0.28, pw: 0.04, ph: 0.46 },
+          { type: 'stone', px: 0.08, py: 0.14, pw: 0.32, ph: 0.04 },
+          { type: 'stone', px: 0.6, py: 0.14, pw: 0.32, ph: 0.04 },
+          { type: 'stone', px: 0.12, py: 0.8, pw: 0.28, ph: 0.04 },
+          { type: 'stone', px: 0.58, py: 0.8, pw: 0.3, ph: 0.04 },
+          { type: 'wood', px: 0.22, py: 0.36, pw: 0.22, ph: 0.035, hp: 70 },
+          { type: 'wood', px: 0.54, py: 0.5, pw: 0.22, ph: 0.035, hp: 70 },
+          { type: 'wood', px: 0.26, py: 0.62, pw: 0.22, ph: 0.035, hp: 70 },
+          { type: 'stone', px: 0.46, py: 0.25, pw: 0.06, ph: 0.26 },
+          { type: 'stone', px: 0.46, py: 0.56, pw: 0.06, ph: 0.18 },
         ],
       },
       {
         name: '第二关 · 走廊与拐角',
-        brief: '多条石墙走廊限制走位，穿插木墙可用火力开道。',
+        brief: '拆分的石墙走廊留出穿插路线，破坏木墙能打开捷径。',
         layout: [
-          { type: 'stone', px: 0.14, py: 0.2, pw: 0.05, ph: 0.6 },
-          { type: 'stone', px: 0.81, py: 0.2, pw: 0.05, ph: 0.6 },
-          { type: 'stone', px: 0.25, py: 0.45, pw: 0.5, ph: 0.05 },
-          { type: 'wood', px: 0.28, py: 0.3, pw: 0.12, ph: 0.05, hp: 60 },
-          { type: 'wood', px: 0.6, py: 0.62, pw: 0.12, ph: 0.05, hp: 60 },
+          { type: 'stone', px: 0.14, py: 0.2, pw: 0.06, ph: 0.22 },
+          { type: 'stone', px: 0.14, py: 0.55, pw: 0.06, ph: 0.22 },
+          { type: 'stone', px: 0.78, py: 0.2, pw: 0.06, ph: 0.22 },
+          { type: 'stone', px: 0.78, py: 0.55, pw: 0.06, ph: 0.22 },
+          { type: 'stone', px: 0.22, py: 0.42, pw: 0.56, ph: 0.04 },
+          { type: 'wood', px: 0.32, py: 0.26, pw: 0.16, ph: 0.045, hp: 60 },
+          { type: 'wood', px: 0.58, py: 0.58, pw: 0.16, ph: 0.045, hp: 60 },
+          { type: 'wood', px: 0.42, py: 0.7, pw: 0.2, ph: 0.04, hp: 60 },
         ],
       },
       {
         name: '第三关 · 中央堡垒',
-        brief: '中心石墙堡垒需绕行，外围木墙可被炮弹摧毁出入口。',
+        brief: '堡垒敞开多向缺口，绕墙和破墙都有路线。',
         layout: [
-          { type: 'stone', px: 0.36, py: 0.36, pw: 0.28, ph: 0.04 },
-          { type: 'stone', px: 0.36, py: 0.6, pw: 0.28, ph: 0.04 },
-          { type: 'stone', px: 0.36, py: 0.4, pw: 0.04, ph: 0.2 },
-          { type: 'stone', px: 0.6, py: 0.4, pw: 0.04, ph: 0.2 },
-          { type: 'wood', px: 0.2, py: 0.25, pw: 0.12, ph: 0.05, hp: 75 },
-          { type: 'wood', px: 0.68, py: 0.72, pw: 0.12, ph: 0.05, hp: 75 },
+          { type: 'stone', px: 0.34, py: 0.34, pw: 0.14, ph: 0.05 },
+          { type: 'stone', px: 0.52, py: 0.34, pw: 0.14, ph: 0.05 },
+          { type: 'stone', px: 0.34, py: 0.6, pw: 0.14, ph: 0.05 },
+          { type: 'stone', px: 0.52, py: 0.6, pw: 0.14, ph: 0.05 },
+          { type: 'stone', px: 0.48, py: 0.42, pw: 0.05, ph: 0.18 },
+          { type: 'wood', px: 0.18, py: 0.26, pw: 0.14, ph: 0.05, hp: 75 },
+          { type: 'wood', px: 0.68, py: 0.7, pw: 0.14, ph: 0.05, hp: 75 },
+          { type: 'wood', px: 0.26, py: 0.58, pw: 0.12, ph: 0.05, hp: 75 },
+          { type: 'wood', px: 0.64, py: 0.38, pw: 0.12, ph: 0.05, hp: 75 },
         ],
       },
     ];
@@ -474,26 +487,34 @@
       const margin = Math.max(arenaPadding + size + 6, size + 12);
       const speed = (randRange(60, 110) + state.wave * 4) * diff.enemySpeed;
       const hp = (30 + state.wave * 5) * diff.enemyHp;
+      const minEnemyGap = size * 3.2;
 
       function clearForEnemy(cx, cy) {
         const candidate = { x: cx - size, y: cy - size, w: size * 2, h: size * 2 };
         const blockedByWalls = obstacles.some(ob => rectsCollide(candidate.x, candidate.y, candidate.w, candidate.h, ob));
         const tooCloseToPlayers = players.some(p => p.alive && Math.hypot(p.x - cx, p.y - cy) < p.size + size + 10);
-        return !blockedByWalls && !tooCloseToPlayers && cx >= margin && cx <= state.width - margin && cy >= margin && cy <= state.height - margin;
+        const tooCloseToEnemies = enemies.some(en => Math.hypot(en.x - cx, en.y - cy) < minEnemyGap);
+        return !blockedByWalls && !tooCloseToPlayers && !tooCloseToEnemies && cx >= margin && cx <= state.width - margin && cy >= margin && cy <= state.height - margin;
       }
 
       let pos = null;
-      for (let attempt = 0; attempt < 24 && !pos; attempt++) {
-        const edge = attempt % 4;
-        const cx = edge === 0 ? randRange(margin, state.width - margin) : edge === 1 ? state.width - margin : edge === 2 ? randRange(margin, state.width - margin) : margin;
-        const cy = edge === 0 ? margin : edge === 1 ? randRange(margin, state.height - margin) : edge === 2 ? state.height - margin : randRange(margin, state.height - margin);
+      const edges = [0,1,2,3].sort(() => Math.random() - 0.5);
+      for (let attempt = 0; attempt < 28 && !pos; attempt++) {
+        const edge = edges[attempt % 4];
+        const spread = Math.max(0.28, 0.5 - attempt * 0.01);
+        const cx = edge === 0 ? randRange(state.width * (0.5 - spread), state.width * (0.5 + spread)) : edge === 1 ? state.width - margin : edge === 2 ? randRange(state.width * (0.5 - spread), state.width * (0.5 + spread)) : margin;
+        const cy = edge === 0 ? margin : edge === 1 ? randRange(state.height * (0.5 - spread), state.height * (0.5 + spread)) : edge === 2 ? state.height - margin : randRange(state.height * (0.5 - spread), state.height * (0.5 + spread));
         if (clearForEnemy(cx, cy)) pos = { x: cx, y: cy };
       }
 
       if (!pos) {
         const step = Math.max(size * 2, 48);
+        const offset = (state.wave % 3) * (step / 2);
         for (let cy = margin; cy <= state.height - margin && !pos; cy += step) {
           for (let cx = margin; cx <= state.width - margin && !pos; cx += step) {
+            const sx = cx + (offset % step);
+            const sy = cy + (offset % step);
+            if (clearForEnemy(sx, sy)) pos = { x: sx, y: sy };
             if (clearForEnemy(cx, cy)) pos = { x: cx, y: cy };
           }
         }
@@ -518,6 +539,21 @@
       }
       if (!placed) {
         pickups.push({ x: state.width / 2, y: state.height / 2, size: 14, ttl: 10 });
+      }
+    }
+
+    function damagePlayer(player, amount) {
+      if (!player.alive) return;
+      player.health -= amount;
+      addParticle(player.x, player.y, '#f87171');
+      if (player.health <= 0) {
+        player.alive = false;
+        for (let k = 0; k < 16; k++) addParticle(player.x, player.y, '#f87171');
+        if (state.mode === 'pvp') {
+          const winner = players.find(p => p.id !== player.id && p.alive);
+          showGameOver(winner ? `${winner.id === 'p1' ? '玩家一' : '玩家二'} 胜利！` : '平局');
+          state.running = false;
+        }
       }
     }
 
@@ -565,6 +601,8 @@
         angle: source.angle + spread,
         speed,
         friendly,
+        ownerType: friendly ? 'player' : 'enemy',
+        ownerId: source.id || null,
         life: 2.2,
       });
     }
@@ -572,7 +610,17 @@
     function update(delta) {
       if (!state.started || !state.running) { updateHud(); return; }
       const livingPlayers = players.filter(p => p.alive);
-      if (livingPlayers.length === 0) { showGameOver(); state.running = false; return; }
+      if (state.mode === 'pvp') {
+        if (livingPlayers.length === 0) { showGameOver('平局'); state.running = false; return; }
+        if (livingPlayers.length === 1) {
+          const winner = livingPlayers[0];
+          showGameOver(`${winner.id === 'p1' ? '玩家一' : '玩家二'} 胜利！`);
+          state.running = false;
+          return;
+        }
+      } else if (livingPlayers.length === 0) {
+        showGameOver(); state.running = false; return;
+      }
 
       livingPlayers.forEach(player => {
         const dir = state.inputs[player.id] || {};
@@ -632,7 +680,17 @@
           bullets.splice(i, 1);
           continue;
         }
-        if (!b.friendly) {
+        if (b.ownerType === 'player' && state.mode === 'pvp') {
+          for (const player of players) {
+            if (!player.alive || player.id === b.ownerId) continue;
+            if (Math.hypot(b.x - player.x, b.y - player.y) < player.size) {
+              bullets.splice(i, 1);
+              damagePlayer(player, 16);
+              break;
+            }
+          }
+        }
+        if (b.ownerType === 'enemy') {
           for (const player of players) {
             if (!player.alive) continue;
             const dist = Math.hypot(b.x - player.x, b.y - player.y);
@@ -645,60 +703,62 @@
         }
       }
 
-      for (let i = enemies.length - 1; i >= 0; i--) {
-        const e = enemies[i];
-        if (!Number.isFinite(e.x) || !Number.isFinite(e.y)) { enemies.splice(i, 1); continue; }
-        let target = null;
-        let nearest = Infinity;
-        for (const player of players) {
-          if (!player.alive) continue;
-          const d = Math.hypot(player.x - e.x, player.y - e.y);
-          if (d < nearest) { nearest = d; target = player; }
-        }
-        if (!target) continue;
-
-        e.angle = Math.atan2(target.y - e.y, target.x - e.x);
-        const ex = e.x + Math.cos(e.angle) * e.speed * delta;
-        const ey = e.y + Math.sin(e.angle) * e.speed * delta;
-        const bound = arenaPadding + e.size;
-        const clampedX = Math.max(bound, Math.min(state.width - bound, ex));
-        const clampedY = Math.max(bound, Math.min(state.height - bound, ey));
-        const willHit = obstacles.some(ob => circleRectCollision(clampedX, clampedY, e.size, ob));
-        if (!willHit) {
-          e.x = clampedX;
-          e.y = clampedY;
-        }
-
-        e.fireCooldown -= delta;
-        if (e.fireCooldown <= 0) {
-          shoot(e, false);
-          e.fireCooldown = e.reload;
-        }
-
-        players.forEach(player => {
-          if (!player.alive) return;
-          const distToPlayer = Math.hypot(e.x - player.x, e.y - player.y);
-          if (distToPlayer < e.size + player.size - 6) {
-            damagePlayer(player, 20 * delta);
+      if (state.mode !== 'pvp') {
+        for (let i = enemies.length - 1; i >= 0; i--) {
+          const e = enemies[i];
+          if (!Number.isFinite(e.x) || !Number.isFinite(e.y)) { enemies.splice(i, 1); continue; }
+          let target = null;
+          let nearest = Infinity;
+          for (const player of players) {
+            if (!player.alive) continue;
+            const d = Math.hypot(player.x - e.x, player.y - e.y);
+            if (d < nearest) { nearest = d; target = player; }
           }
-        });
+          if (!target) continue;
 
-        for (let j = bullets.length - 1; j >= 0; j--) {
-          const b = bullets[j];
-          if (!b.friendly) continue;
-          const dist = Math.hypot(b.x - e.x, b.y - e.y);
-          if (dist < e.size) {
-            bullets.splice(j, 1);
-            e.hp -= 20;
-            state.combo += 1;
-            const diff = difficulties[state.difficulty];
-            state.score += Math.round(10 * (1 + state.combo * 0.05) * diff.score);
-            addParticle(e.x, e.y, '#f472b6');
-            if (e.hp <= 0) {
-              for (let k = 0; k < 12; k++) addParticle(e.x, e.y, '#22c55e');
-              enemies.splice(i, 1);
+          e.angle = Math.atan2(target.y - e.y, target.x - e.x);
+          const ex = e.x + Math.cos(e.angle) * e.speed * delta;
+          const ey = e.y + Math.sin(e.angle) * e.speed * delta;
+          const bound = arenaPadding + e.size;
+          const clampedX = Math.max(bound, Math.min(state.width - bound, ex));
+          const clampedY = Math.max(bound, Math.min(state.height - bound, ey));
+          const willHit = obstacles.some(ob => circleRectCollision(clampedX, clampedY, e.size, ob));
+          if (!willHit) {
+            e.x = clampedX;
+            e.y = clampedY;
+          }
+
+          e.fireCooldown -= delta;
+          if (e.fireCooldown <= 0) {
+            shoot(e, false);
+            e.fireCooldown = e.reload;
+          }
+
+          players.forEach(player => {
+            if (!player.alive) return;
+            const distToPlayer = Math.hypot(e.x - player.x, e.y - player.y);
+            if (distToPlayer < e.size + player.size - 6) {
+              damagePlayer(player, 20 * delta);
             }
-            break;
+          });
+
+          for (let j = bullets.length - 1; j >= 0; j--) {
+            const b = bullets[j];
+            if (!b.friendly) continue;
+            const dist = Math.hypot(b.x - e.x, b.y - e.y);
+            if (dist < e.size) {
+              bullets.splice(j, 1);
+              e.hp -= 20;
+              state.combo += 1;
+              const diff = difficulties[state.difficulty];
+              state.score += Math.round(10 * (1 + state.combo * 0.05) * diff.score);
+              addParticle(e.x, e.y, '#f472b6');
+              if (e.hp <= 0) {
+                for (let k = 0; k < 12; k++) addParticle(e.x, e.y, '#22c55e');
+                enemies.splice(i, 1);
+              }
+              break;
+            }
           }
         }
       }
@@ -727,7 +787,7 @@
         p.x += p.vx * delta; p.y += p.vy * delta; p.size *= 0.98;
       }
 
-      if (enemies.length === 0) {
+      if (state.mode !== 'pvp' && enemies.length === 0) {
         state.wave += 1;
         const nextLevel = Math.floor((state.wave - 1) / 3) % levelLayouts.length;
         if (nextLevel !== state.levelIndex) buildLevel(nextLevel);
@@ -889,14 +949,14 @@
       difficultyLabel.textContent = difficulties[state.difficulty].label;
     }
 
-    function showGameOver() {
+    function showGameOver(title = '战斗结束') {
       ctx.save();
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
       ctx.fillRect(0,0,state.width,state.height);
       ctx.fillStyle = '#e2e8f0';
       ctx.font = 'bold 42px "Segoe UI"';
       ctx.textAlign = 'center';
-      ctx.fillText('战斗结束', state.width/2, state.height/2 - 10);
+      ctx.fillText(title, state.width/2, state.height/2 - 10);
       ctx.font = '20px "Segoe UI"';
       ctx.fillText(`最终得分：${state.score} | 波次 ${state.wave}`, state.width/2, state.height/2 + 28);
       ctx.fillText('点击重新开局，或按 R 重置', state.width/2, state.height/2 + 60);
@@ -918,7 +978,7 @@
         case '.': state.inputs.p2.shoot = pressed; break;
         case '/': state.inputs.p2.dash = pressed; break;
         case 'p': if (pressed) togglePause(); break;
-        case 'r': if (pressed) { state.started ? resetGame() : startGame(state.playerCount > 1 ? 'coop' : 'solo'); } break;
+        case 'r': if (pressed) { state.started ? resetGame() : startGame(state.mode); } break;
       }
     }
 
@@ -931,7 +991,7 @@
     function setupControls() {
       window.addEventListener('keydown', (e) => { handleKey(e, true); });
       window.addEventListener('keyup', (e) => { handleKey(e, false); });
-      restartBtn.addEventListener('click', () => startGame(state.playerCount > 1 ? 'coop' : 'solo'));
+      restartBtn.addEventListener('click', () => startGame(state.mode));
       pauseBtn.addEventListener('click', togglePause);
       difficultySelect.addEventListener('change', (e) => {
         state.difficulty = e.target.value;
@@ -939,6 +999,7 @@
       });
       startSolo?.addEventListener('click', () => startGame('solo'));
       startCoop?.addEventListener('click', () => startGame('coop'));
+      startPvp?.addEventListener('click', () => startGame('pvp'));
       mobileShoot?.addEventListener('click', () => state.inputs.p1.shoot = true);
       mobileDash?.addEventListener('click', () => state.inputs.p1.dash = true);
 
@@ -991,7 +1052,8 @@
     }
 
     function startGame(mode = 'solo') {
-      state.playerCount = mode === 'coop' ? 2 : 1;
+      state.mode = mode;
+      state.playerCount = mode === 'solo' ? 1 : 2;
       state.started = true;
       state.running = true;
       startMenu?.classList.add('hidden');
