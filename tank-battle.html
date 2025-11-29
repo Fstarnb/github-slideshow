@@ -298,6 +298,8 @@
     const startSolo = document.getElementById('start-solo');
     const startCoop = document.getElementById('start-coop');
 
+    const arenaPadding = 28;
+
     const state = {
       running: false,
       started: false,
@@ -397,7 +399,8 @@
     }
 
     function isFreeSpot(x, y, radius, self) {
-      if (x < radius || x > state.width - radius || y < radius || y > state.height - radius) return false;
+      const pad = arenaPadding + radius;
+      if (x < pad || x > state.width - pad || y < pad || y > state.height - pad) return false;
       const hitsObstacle = obstacles.some(ob => circleRectCollision(x, y, radius, ob));
       const hitsPlayer = players.some(p => p !== self && p.alive && Math.hypot(p.x - x, p.y - y) < radius * 2);
       return !hitsObstacle && !hitsPlayer;
@@ -429,9 +432,10 @@
       }
 
       // Final clamp to keep the player on screen if everything else failed
+      const pad = arenaPadding + radius;
       return {
-        x: Math.min(Math.max(radius, preferred.x), state.width - radius),
-        y: Math.min(Math.max(radius, preferred.y), state.height - radius),
+        x: Math.min(Math.max(pad, preferred.x), state.width - pad),
+        y: Math.min(Math.max(pad, preferred.y), state.height - pad),
       };
     }
 
@@ -467,19 +471,19 @@
     function spawnEnemy() {
       const diff = difficulties[state.difficulty];
       const edge = Math.floor(Math.random() * 4);
-      const margin = 40;
+      const size = 22;
+      const margin = Math.max(arenaPadding + 4, size + 12);
       const speed = (randRange(60, 110) + state.wave * 4) * diff.enemySpeed;
       const hp = (30 + state.wave * 5) * diff.enemyHp;
       let x, y;
-      const size = 22;
       for (let attempt = 0; attempt < 10; attempt++) {
-        if (edge === 0) { x = randRange(margin, state.width - margin); y = -margin; }
-        else if (edge === 1) { x = state.width + margin; y = randRange(margin, state.height - margin); }
-        else if (edge === 2) { x = randRange(margin, state.width - margin); y = state.height + margin; }
-        else { x = -margin; y = randRange(margin, state.height - margin); }
+        if (edge === 0) { x = randRange(margin, state.width - margin); y = margin; }
+        else if (edge === 1) { x = state.width - margin; y = randRange(margin, state.height - margin); }
+        else if (edge === 2) { x = randRange(margin, state.width - margin); y = state.height - margin; }
+        else { x = margin; y = randRange(margin, state.height - margin); }
         const candidate = { x: x - size, y: y - size, w: size * 2, h: size * 2 };
         const blocked = obstacles.some(ob => rectsCollide(candidate.x, candidate.y, candidate.w, candidate.h, ob));
-        if (!blocked) break;
+        if (!blocked && x >= margin && x <= state.width - margin && y >= margin && y <= state.height - margin) break;
       }
       enemies.push({ x, y, angle: 0, size, speed, hp, reload: randRange(0.8, 1.4), fireCooldown: 0 });
     }
@@ -572,8 +576,9 @@
 
         const prevX = player.x;
         const prevY = player.y;
-        player.x = Math.max(player.size, Math.min(state.width - player.size, player.x + vx * delta));
-        player.y = Math.max(player.size, Math.min(state.height - player.size, player.y + vy * delta));
+        const pad = arenaPadding + player.size;
+        player.x = Math.max(pad, Math.min(state.width - pad, player.x + vx * delta));
+        player.y = Math.max(pad, Math.min(state.height - pad, player.y + vy * delta));
         const hitObstacle = obstacles.some(ob => circleRectCollision(player.x, player.y, player.size, ob));
         if (hitObstacle) {
           player.x = prevX;
@@ -638,10 +643,13 @@
         e.angle = Math.atan2(target.y - e.y, target.x - e.x);
         const ex = e.x + Math.cos(e.angle) * e.speed * delta;
         const ey = e.y + Math.sin(e.angle) * e.speed * delta;
-        const willHit = obstacles.some(ob => circleRectCollision(ex, ey, e.size, ob));
+        const bound = arenaPadding + e.size;
+        const clampedX = Math.max(bound, Math.min(state.width - bound, ex));
+        const clampedY = Math.max(bound, Math.min(state.height - bound, ey));
+        const willHit = obstacles.some(ob => circleRectCollision(clampedX, clampedY, e.size, ob));
         if (!willHit) {
-          e.x = ex;
-          e.y = ey;
+          e.x = clampedX;
+          e.y = clampedY;
         }
 
         e.fireCooldown -= delta;
@@ -978,8 +986,9 @@
       const ratio = window.devicePixelRatio || 1;
       canvas.width = rect.width * ratio;
       canvas.height = rect.height * ratio;
-      state.width = canvas.width;
-      state.height = canvas.height;
+      state.width = rect.width;
+      state.height = rect.height;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(ratio, ratio);
       buildLevel(state.levelIndex);
     }
