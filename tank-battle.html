@@ -145,7 +145,7 @@
       flex-wrap: wrap;
       margin-top: 8px;
     }
-    .btn {
+    .btn {    
       border: none;
       padding: 10px 14px;
       border-radius: 10px;
@@ -157,6 +157,9 @@
       transition: transform 0.1s ease, box-shadow 0.1s ease;
     }
     .btn:active { transform: translateY(1px); box-shadow: 0 4px 10px rgba(0,0,0,0.35); }
+    .field { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 4px; }
+    label { color: var(--muted); font-size: 13px; }
+    select { padding: 10px; border-radius: 10px; background: rgba(255,255,255,0.04); color: var(--text); border: 1px solid rgba(148,163,184,0.25); }
     .muted { color: var(--muted); font-size: 13px; }
     .badge { color: #fbbf24; font-weight: 700; }
     .mobile-hints { display: none; }
@@ -191,6 +194,8 @@
         </div>
         <div class="stat">分数 <span id="score">0</span></div>
         <div class="stat">波次 <span id="wave">1</span></div>
+        <div class="stat">关卡 <span id="level-name">第一关 · 开阔练习场</span></div>
+        <div class="stat">难度 <span id="difficulty-label">标准</span></div>
       </div>
       <canvas id="game" width="960" height="600" aria-label="Tank battle game"></canvas>
     </div>
@@ -206,6 +211,15 @@
         <button class="btn" id="restart">重新开局</button>
         <button class="btn" id="toggle-pause">暂停 / 继续</button>
       </div>
+      <div class="field">
+        <label for="difficulty">难度选项（影响敌人血量、速度与刷怪强度）</label>
+        <select id="difficulty">
+          <option value="easy">轻松</option>
+          <option value="normal" selected>标准</option>
+          <option value="hard">噩梦</option>
+        </select>
+      </div>
+      <p class="muted">当前关卡：<span id="level-brief">第一关以木墙为主，可练习绕障碍射击；每 3 波自动切换下一关布局。</span></p>
       <p class="muted">提示：在移动端浏览，可点击屏幕左下角方向盘与右下角射击区。</p>
       <div class="mobile-hints">
         <canvas id="stick" width="140" height="140" style="background:rgba(255,255,255,0.03); border-radius:12px; border:1px solid rgba(148,163,184,0.15);"></canvas>
@@ -225,6 +239,10 @@
     const energyBar = document.getElementById('energy-bar');
     const scoreEl = document.getElementById('score');
     const waveEl = document.getElementById('wave');
+    const levelNameEl = document.getElementById('level-name');
+    const levelBriefEl = document.getElementById('level-brief');
+    const difficultyLabel = document.getElementById('difficulty-label');
+    const difficultySelect = document.getElementById('difficulty');
     const restartBtn = document.getElementById('restart');
     const pauseBtn = document.getElementById('toggle-pause');
     const mobileShoot = document.getElementById('mobile-shoot');
@@ -236,9 +254,17 @@
       height: canvas.height,
       score: 0,
       wave: 1,
+      levelIndex: 0,
       combo: 0,
       lastTime: 0,
+      difficulty: 'normal',
       inputs: { up:false, down:false, left:false, right:false, shoot:false, dash:false },
+    };
+
+    const difficulties = {
+      easy: { label: '轻松', enemyHp: 0.85, enemySpeed: 0.9, spawnScale: 0.9, score: 0.9 },
+      normal: { label: '标准', enemyHp: 1, enemySpeed: 1, spawnScale: 1, score: 1 },
+      hard: { label: '噩梦', enemyHp: 1.35, enemySpeed: 1.15, spawnScale: 1.25, score: 1.25 },
     };
 
     const playerDefaults = {
@@ -258,36 +284,122 @@
     const enemies = [];
     const particles = [];
     const pickups = [];
+    let obstacles = [];
+
+    const levelLayouts = [
+      {
+        name: '第一关 · 开阔练习场',
+        brief: '中央木墙与边缘石墙组合，适合练习绕障碍与迂回射击。',
+        layout: [
+          { type: 'stone', px: 0.08, py: 0.15, pw: 0.84, ph: 0.04 },
+          { type: 'stone', px: 0.08, py: 0.81, pw: 0.84, ph: 0.04 },
+          { type: 'wood', px: 0.3, py: 0.38, pw: 0.4, ph: 0.03, hp: 70 },
+          { type: 'wood', px: 0.3, py: 0.55, pw: 0.4, ph: 0.03, hp: 70 },
+          { type: 'stone', px: 0.48, py: 0.28, pw: 0.04, ph: 0.46 },
+        ],
+      },
+      {
+        name: '第二关 · 走廊与拐角',
+        brief: '多条石墙走廊限制走位，穿插木墙可用火力开道。',
+        layout: [
+          { type: 'stone', px: 0.14, py: 0.2, pw: 0.05, ph: 0.6 },
+          { type: 'stone', px: 0.81, py: 0.2, pw: 0.05, ph: 0.6 },
+          { type: 'stone', px: 0.25, py: 0.45, pw: 0.5, ph: 0.05 },
+          { type: 'wood', px: 0.28, py: 0.3, pw: 0.12, ph: 0.05, hp: 60 },
+          { type: 'wood', px: 0.6, py: 0.62, pw: 0.12, ph: 0.05, hp: 60 },
+        ],
+      },
+      {
+        name: '第三关 · 中央堡垒',
+        brief: '中心石墙堡垒需绕行，外围木墙可被炮弹摧毁出入口。',
+        layout: [
+          { type: 'stone', px: 0.36, py: 0.36, pw: 0.28, ph: 0.04 },
+          { type: 'stone', px: 0.36, py: 0.6, pw: 0.28, ph: 0.04 },
+          { type: 'stone', px: 0.36, py: 0.4, pw: 0.04, ph: 0.2 },
+          { type: 'stone', px: 0.6, py: 0.4, pw: 0.04, ph: 0.2 },
+          { type: 'wood', px: 0.2, py: 0.25, pw: 0.12, ph: 0.05, hp: 75 },
+          { type: 'wood', px: 0.68, py: 0.72, pw: 0.12, ph: 0.05, hp: 75 },
+        ],
+      },
+    ];
 
     function randRange(min, max) { return Math.random() * (max - min) + min; }
 
+    function obstacleFromLayout(item) {
+      return {
+        type: item.type,
+        x: item.px * state.width,
+        y: item.py * state.height,
+        w: item.pw * state.width,
+        h: item.ph * state.height,
+        hp: item.type === 'wood' ? (item.hp || 60) : Infinity,
+      };
+    }
+
+    function buildLevel(index = 0) {
+      const def = levelLayouts[index % levelLayouts.length];
+      obstacles = def.layout.map(obstacleFromLayout);
+      state.levelIndex = index % levelLayouts.length;
+      levelNameEl.textContent = def.name;
+      levelBriefEl.textContent = def.brief;
+    }
+
+    function circleRectCollision(cx, cy, r, rect) {
+      const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+      const closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+      const dx = cx - closestX;
+      const dy = cy - closestY;
+      return (dx * dx + dy * dy) < (r * r);
+    }
+
+    function rectsCollide(ax, ay, aw, ah, b) {
+      return ax < b.x + b.w && ax + aw > b.x && ay < b.y + b.h && ay + ah > b.y;
+    }
+
     function spawnEnemy() {
+      const diff = difficulties[state.difficulty];
       const edge = Math.floor(Math.random() * 4);
       const margin = 40;
-      const speed = randRange(60, 110) + state.wave * 4;
-      const hp = 30 + state.wave * 5;
+      const speed = (randRange(60, 110) + state.wave * 4) * diff.enemySpeed;
+      const hp = (30 + state.wave * 5) * diff.enemyHp;
       let x, y;
-      if (edge === 0) { x = randRange(margin, state.width - margin); y = -margin; }
-      else if (edge === 1) { x = state.width + margin; y = randRange(margin, state.height - margin); }
-      else if (edge === 2) { x = randRange(margin, state.width - margin); y = state.height + margin; }
-      else { x = -margin; y = randRange(margin, state.height - margin); }
-      enemies.push({ x, y, angle: 0, size: 22, speed, hp, reload: randRange(0.8, 1.4), fireCooldown: 0 });
+      const size = 22;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        if (edge === 0) { x = randRange(margin, state.width - margin); y = -margin; }
+        else if (edge === 1) { x = state.width + margin; y = randRange(margin, state.height - margin); }
+        else if (edge === 2) { x = randRange(margin, state.width - margin); y = state.height + margin; }
+        else { x = -margin; y = randRange(margin, state.height - margin); }
+        const candidate = { x: x - size, y: y - size, w: size * 2, h: size * 2 };
+        const blocked = obstacles.some(ob => rectsCollide(candidate.x, candidate.y, candidate.w, candidate.h, ob));
+        if (!blocked) break;
+      }
+      enemies.push({ x, y, angle: 0, size, speed, hp, reload: randRange(0.8, 1.4), fireCooldown: 0 });
     }
 
     function spawnPickup() {
-      pickups.push({
-        x: randRange(80, state.width - 80),
-        y: randRange(80, state.height - 80),
-        size: 14,
-        ttl: 10,
-      });
+      let placed = false;
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const candidate = {
+          x: randRange(80, state.width - 80),
+          y: randRange(80, state.height - 80),
+          size: 14,
+          ttl: 10,
+        };
+        const blocked = obstacles.some(ob => circleRectCollision(candidate.x, candidate.y, candidate.size + 4, ob));
+        if (!blocked) { pickups.push(candidate); placed = true; break; }
+      }
+      if (!placed) {
+        pickups.push({ x: state.width / 2, y: state.height / 2, size: 14, ttl: 10 });
+      }
     }
 
     function resetGame() {
       Object.assign(player, playerDefaults, { x: canvas.width/2, y: canvas.height/2 });
       enemies.length = 0; bullets.length = 0; particles.length = 0; pickups.length = 0;
       state.score = 0; state.wave = 1; state.combo = 0; state.running = true; state.lastTime = 0;
+      buildLevel(0);
       for (let i = 0; i < 5; i++) spawnEnemy();
+      updateDifficultyUi();
     }
 
     function addParticle(x, y, color) {
@@ -326,8 +438,15 @@
         for (let i = 0; i < 10; i++) addParticle(player.x, player.y, '#22d3ee');
       }
 
+      const prevX = player.x;
+      const prevY = player.y;
       player.x = Math.max(0, Math.min(state.width, player.x + vx * delta));
       player.y = Math.max(0, Math.min(state.height, player.y + vy * delta));
+      const hitObstacle = obstacles.some(ob => circleRectCollision(player.x, player.y, player.size, ob));
+      if (hitObstacle) {
+        player.x = prevX;
+        player.y = prevY;
+      }
 
       player.fireCooldown -= delta;
       player.dashCooldown -= delta;
@@ -345,6 +464,17 @@
         if (b.life <= 0) { bullets.splice(i, 1); continue; }
         b.x += Math.cos(b.angle) * b.speed * delta;
         b.y += Math.sin(b.angle) * b.speed * delta;
+        const collideIndex = obstacles.findIndex(ob => circleRectCollision(b.x, b.y, 4, ob));
+        if (collideIndex !== -1) {
+          const ob = obstacles[collideIndex];
+          if (ob.type === 'wood') {
+            ob.hp -= b.friendly ? 28 : 18;
+            addParticle(b.x, b.y, '#fbbf24');
+            if (ob.hp <= 0) { obstacles.splice(collideIndex, 1); }
+          }
+          bullets.splice(i, 1);
+          continue;
+        }
         if (b.x < -20 || b.x > state.width + 20 || b.y < -20 || b.y > state.height + 20) {
           bullets.splice(i, 1);
           continue;
@@ -364,8 +494,13 @@
       for (let i = enemies.length - 1; i >= 0; i--) {
         const e = enemies[i];
         e.angle = Math.atan2(player.y - e.y, player.x - e.x);
-        e.x += Math.cos(e.angle) * e.speed * delta;
-        e.y += Math.sin(e.angle) * e.speed * delta;
+        const ex = e.x + Math.cos(e.angle) * e.speed * delta;
+        const ey = e.y + Math.sin(e.angle) * e.speed * delta;
+        const willHit = obstacles.some(ob => circleRectCollision(ex, ey, e.size, ob));
+        if (!willHit) {
+          e.x = ex;
+          e.y = ey;
+        }
 
         e.fireCooldown -= delta;
         if (e.fireCooldown <= 0) {
@@ -387,7 +522,8 @@
             bullets.splice(j, 1);
             e.hp -= 20;
             state.combo += 1;
-            state.score += Math.round(10 * (1 + state.combo * 0.05));
+            const diff = difficulties[state.difficulty];
+            state.score += Math.round(10 * (1 + state.combo * 0.05) * diff.score);
             addParticle(e.x, e.y, '#f472b6');
             if (e.hp <= 0) {
               for (let k = 0; k < 12; k++) addParticle(e.x, e.y, '#22c55e');
@@ -422,7 +558,10 @@
 
       if (enemies.length === 0) {
         state.wave += 1;
-        for (let i = 0; i < 3 + state.wave; i++) spawnEnemy();
+        const nextLevel = Math.floor((state.wave - 1) / 3) % levelLayouts.length;
+        if (nextLevel !== state.levelIndex) buildLevel(nextLevel);
+        const diff = difficulties[state.difficulty];
+        for (let i = 0; i < Math.round((3 + state.wave) * diff.spawnScale); i++) spawnEnemy();
         if (Math.random() > 0.4) spawnPickup();
       }
 
@@ -472,6 +611,23 @@
       });
     }
 
+    function drawObstacles() {
+      obstacles.forEach(ob => {
+        ctx.save();
+        ctx.translate(ob.x, ob.y);
+        ctx.fillStyle = ob.type === 'stone' ? '#475569' : '#b45309';
+        ctx.globalAlpha = ob.type === 'wood' ? Math.max(0.4, ob.hp / 100) : 0.95;
+        ctx.fillRect(0, 0, ob.w, ob.h);
+        if (ob.type === 'stone') {
+          ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(4, 4, ob.w - 8, ob.h - 8);
+        }
+        ctx.restore();
+      });
+      ctx.globalAlpha = 1;
+    }
+
     function drawParticles() {
       particles.forEach(p => {
         ctx.fillStyle = p.color;
@@ -507,6 +663,7 @@
     function draw() {
       ctx.clearRect(0,0,state.width,state.height);
       drawBackground();
+      drawObstacles();
       drawPickups();
       drawBullets();
       drawParticles();
@@ -527,6 +684,12 @@
       energyBar.style.width = `${Math.max(0, player.energy)}%`;
       scoreEl.textContent = state.score;
       waveEl.textContent = state.wave;
+      difficultyLabel.textContent = difficulties[state.difficulty].label;
+    }
+
+    function updateDifficultyUi() {
+      difficultySelect.value = state.difficulty;
+      difficultyLabel.textContent = difficulties[state.difficulty].label;
     }
 
     function showGameOver() {
@@ -566,6 +729,10 @@
       window.addEventListener('keyup', (e) => { handleKey(e, false); });
       restartBtn.addEventListener('click', resetGame);
       pauseBtn.addEventListener('click', togglePause);
+      difficultySelect.addEventListener('change', (e) => {
+        state.difficulty = e.target.value;
+        resetGame();
+      });
       mobileShoot?.addEventListener('click', () => state.inputs.shoot = true);
       mobileDash?.addEventListener('click', () => state.inputs.dash = true);
 
@@ -625,6 +792,7 @@
       state.width = canvas.width;
       state.height = canvas.height;
       ctx.scale(ratio, ratio);
+      buildLevel(state.levelIndex);
     }
 
     window.addEventListener('resize', resize);
