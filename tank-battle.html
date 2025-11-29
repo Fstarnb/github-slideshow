@@ -470,22 +470,38 @@
 
     function spawnEnemy() {
       const diff = difficulties[state.difficulty];
-      const edge = Math.floor(Math.random() * 4);
       const size = 22;
-      const margin = Math.max(arenaPadding + 4, size + 12);
+      const margin = Math.max(arenaPadding + size + 6, size + 12);
       const speed = (randRange(60, 110) + state.wave * 4) * diff.enemySpeed;
       const hp = (30 + state.wave * 5) * diff.enemyHp;
-      let x, y;
-      for (let attempt = 0; attempt < 10; attempt++) {
-        if (edge === 0) { x = randRange(margin, state.width - margin); y = margin; }
-        else if (edge === 1) { x = state.width - margin; y = randRange(margin, state.height - margin); }
-        else if (edge === 2) { x = randRange(margin, state.width - margin); y = state.height - margin; }
-        else { x = margin; y = randRange(margin, state.height - margin); }
-        const candidate = { x: x - size, y: y - size, w: size * 2, h: size * 2 };
-        const blocked = obstacles.some(ob => rectsCollide(candidate.x, candidate.y, candidate.w, candidate.h, ob));
-        if (!blocked && x >= margin && x <= state.width - margin && y >= margin && y <= state.height - margin) break;
+
+      function clearForEnemy(cx, cy) {
+        const candidate = { x: cx - size, y: cy - size, w: size * 2, h: size * 2 };
+        const blockedByWalls = obstacles.some(ob => rectsCollide(candidate.x, candidate.y, candidate.w, candidate.h, ob));
+        const tooCloseToPlayers = players.some(p => p.alive && Math.hypot(p.x - cx, p.y - cy) < p.size + size + 10);
+        return !blockedByWalls && !tooCloseToPlayers && cx >= margin && cx <= state.width - margin && cy >= margin && cy <= state.height - margin;
       }
-      enemies.push({ x, y, angle: 0, size, speed, hp, reload: randRange(0.8, 1.4), fireCooldown: 0 });
+
+      let pos = null;
+      for (let attempt = 0; attempt < 24 && !pos; attempt++) {
+        const edge = attempt % 4;
+        const cx = edge === 0 ? randRange(margin, state.width - margin) : edge === 1 ? state.width - margin : edge === 2 ? randRange(margin, state.width - margin) : margin;
+        const cy = edge === 0 ? margin : edge === 1 ? randRange(margin, state.height - margin) : edge === 2 ? state.height - margin : randRange(margin, state.height - margin);
+        if (clearForEnemy(cx, cy)) pos = { x: cx, y: cy };
+      }
+
+      if (!pos) {
+        const step = Math.max(size * 2, 48);
+        for (let cy = margin; cy <= state.height - margin && !pos; cy += step) {
+          for (let cx = margin; cx <= state.width - margin && !pos; cx += step) {
+            if (clearForEnemy(cx, cy)) pos = { x: cx, y: cy };
+          }
+        }
+      }
+
+      if (!pos) pos = { x: state.width / 2, y: state.height / 2 };
+
+      enemies.push({ x: pos.x, y: pos.y, angle: 0, size, speed, hp, reload: randRange(0.8, 1.4), fireCooldown: 0 });
     }
 
     function spawnPickup() {
@@ -631,6 +647,7 @@
 
       for (let i = enemies.length - 1; i >= 0; i--) {
         const e = enemies[i];
+        if (!Number.isFinite(e.x) || !Number.isFinite(e.y)) { enemies.splice(i, 1); continue; }
         let target = null;
         let nearest = Infinity;
         for (const player of players) {
