@@ -74,7 +74,7 @@
       gap: 16px;
       padding: 16px 24px 32px;
     }
-    .panel { 
+    .panel {
       background: rgba(15, 23, 42, 0.9);
       border: 1px solid rgba(148, 163, 184, 0.15);
       border-radius: 16px;
@@ -82,6 +82,31 @@
       overflow: hidden;
       position: relative;
     }
+    .status-banner {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 10px 16px;
+      border-radius: 12px;
+      background: rgba(17,24,39,0.9);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      box-shadow: 0 10px 20px rgba(0,0,0,0.35);
+      color: var(--text);
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      z-index: 6;
+      opacity: 0;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      pointer-events: none;
+    }
+    .status-banner.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    .status-banner.success { border-color: rgba(16, 185, 129, 0.4); color: #34d399; }
+    .status-banner.warn { border-color: rgba(251, 191, 36, 0.45); color: #fbbf24; }
+    .status-banner.danger { border-color: rgba(248, 113, 113, 0.5); color: #f87171; }
     .menu-overlay {
       position: absolute;
       inset: 0;
@@ -208,6 +233,7 @@
   </div>
   <div class="shell">
     <div class="panel" id="game-panel">
+      <div class="status-banner" id="status-banner"></div>
       <div class="menu-overlay" id="start-menu">
         <div class="menu-card">
           <p class="muted" style="margin:0 0 6px">选择出战模式</p>
@@ -264,7 +290,11 @@
           <option value="hard">噩梦</option>
         </select>
       </div>
-      <p class="muted">当前关卡：<span id="level-brief">第一关以木墙为主，可练习绕障碍射击；每 3 波自动切换下一关布局。</span></p>
+      <div class="field">
+        <label for="level-select">关卡选择（可固定布局或自动轮换）</label>
+        <select id="level-select"></select>
+      </div>
+      <p class="muted">当前关卡：<span id="level-brief">关卡默认自动轮换，你也可以手动选择更开放或更密集的布局。</span></p>
       <p class="muted">提示：在移动端浏览，可点击屏幕左下角方向盘与右下角射击区。</p>
       <div class="mobile-hints">
         <canvas id="stick" width="140" height="140" style="background:rgba(255,255,255,0.03); border-radius:12px; border:1px solid rgba(148,163,184,0.15);"></canvas>
@@ -299,6 +329,8 @@
     const startSolo = document.getElementById('start-solo');
     const startCoop = document.getElementById('start-coop');
     const startPvp = document.getElementById('start-pvp');
+    const statusBanner = document.getElementById('status-banner');
+    const levelSelect = document.getElementById('level-select');
 
     const arenaPadding = 28;
 
@@ -310,11 +342,14 @@
       score: 0,
       wave: 1,
       levelIndex: 0,
+      levelMode: 'auto',
       combo: 0,
       lastTime: 0,
       difficulty: 'normal',
       mode: 'solo',
       playerCount: 1,
+      gameOverTitle: '战斗结束',
+      gameOverTone: 'danger',
       inputs: {
         p1: { up:false, down:false, left:false, right:false, shoot:false, dash:false },
         p2: { up:false, down:false, left:false, right:false, shoot:false, dash:false },
@@ -322,9 +357,9 @@
     };
 
     const difficulties = {
-      easy: { label: '轻松', enemyHp: 0.85, enemySpeed: 0.9, spawnScale: 0.9, score: 0.9 },
-      normal: { label: '标准', enemyHp: 1, enemySpeed: 1, spawnScale: 1, score: 1 },
-      hard: { label: '噩梦', enemyHp: 1.35, enemySpeed: 1.15, spawnScale: 1.25, score: 1.25 },
+      easy: { label: '轻松', enemyHp: 0.85, enemySpeed: 0.82, spawnScale: 0.85, score: 0.9, enemyFire: 1.1 },
+      normal: { label: '标准', enemyHp: 1, enemySpeed: 0.92, spawnScale: 0.95, score: 1, enemyFire: 1 },
+      hard: { label: '噩梦', enemyHp: 1.25, enemySpeed: 1.05, spawnScale: 1.05, score: 1.15, enemyFire: 0.9 },
     };
 
     const playerDefaults = {
@@ -346,53 +381,69 @@
     const particles = [];
     const pickups = [];
     let obstacles = [];
+    let bannerTimer = null;
 
     const levelLayouts = [
       {
-        name: '第一关 · 开阔练习场',
-        brief: '石墙留出通道，木墙短隔断方便绕行与对射。',
+        name: '第一关 · 交错散障',
+        brief: '长短石墙交错，留出宽阔主干道，木墙作短掩体便于躲避。',
         layout: [
-          { type: 'stone', px: 0.08, py: 0.14, pw: 0.32, ph: 0.04 },
-          { type: 'stone', px: 0.6, py: 0.14, pw: 0.32, ph: 0.04 },
-          { type: 'stone', px: 0.12, py: 0.8, pw: 0.28, ph: 0.04 },
-          { type: 'stone', px: 0.58, py: 0.8, pw: 0.3, ph: 0.04 },
-          { type: 'wood', px: 0.22, py: 0.36, pw: 0.22, ph: 0.035, hp: 70 },
-          { type: 'wood', px: 0.54, py: 0.5, pw: 0.22, ph: 0.035, hp: 70 },
-          { type: 'wood', px: 0.26, py: 0.62, pw: 0.22, ph: 0.035, hp: 70 },
-          { type: 'stone', px: 0.46, py: 0.25, pw: 0.06, ph: 0.26 },
-          { type: 'stone', px: 0.46, py: 0.56, pw: 0.06, ph: 0.18 },
+          { type: 'stone', px: 0.08, py: 0.2, pw: 0.22, ph: 0.035 },
+          { type: 'stone', px: 0.42, py: 0.2, pw: 0.16, ph: 0.035 },
+          { type: 'stone', px: 0.7, py: 0.2, pw: 0.18, ph: 0.035 },
+          { type: 'stone', px: 0.18, py: 0.46, pw: 0.22, ph: 0.035 },
+          { type: 'stone', px: 0.64, py: 0.46, pw: 0.22, ph: 0.035 },
+          { type: 'stone', px: 0.32, py: 0.7, pw: 0.2, ph: 0.035 },
+          { type: 'stone', px: 0.56, py: 0.7, pw: 0.2, ph: 0.035 },
+          { type: 'stone', px: 0.46, py: 0.32, pw: 0.06, ph: 0.16 },
+          { type: 'stone', px: 0.24, py: 0.3, pw: 0.05, ph: 0.15 },
+          { type: 'wood', px: 0.28, py: 0.56, pw: 0.14, ph: 0.03, hp: 70 },
+          { type: 'wood', px: 0.62, py: 0.58, pw: 0.16, ph: 0.03, hp: 70 },
+          { type: 'wood', px: 0.42, py: 0.38, pw: 0.16, ph: 0.03, hp: 70 },
         ],
       },
       {
-        name: '第二关 · 走廊与拐角',
-        brief: '拆分的石墙走廊留出穿插路线，破坏木墙能打开捷径。',
+        name: '第二关 · 分段走廊',
+        brief: '分段石墙形成转角小道，中央保持贯通，木墙是灵活的短掩体。',
         layout: [
-          { type: 'stone', px: 0.14, py: 0.2, pw: 0.06, ph: 0.22 },
-          { type: 'stone', px: 0.14, py: 0.55, pw: 0.06, ph: 0.22 },
-          { type: 'stone', px: 0.78, py: 0.2, pw: 0.06, ph: 0.22 },
-          { type: 'stone', px: 0.78, py: 0.55, pw: 0.06, ph: 0.22 },
-          { type: 'stone', px: 0.22, py: 0.42, pw: 0.56, ph: 0.04 },
-          { type: 'wood', px: 0.32, py: 0.26, pw: 0.16, ph: 0.045, hp: 60 },
-          { type: 'wood', px: 0.58, py: 0.58, pw: 0.16, ph: 0.045, hp: 60 },
-          { type: 'wood', px: 0.42, py: 0.7, pw: 0.2, ph: 0.04, hp: 60 },
+          { type: 'stone', px: 0.14, py: 0.18, pw: 0.06, ph: 0.24 },
+          { type: 'stone', px: 0.14, py: 0.56, pw: 0.06, ph: 0.2 },
+          { type: 'stone', px: 0.78, py: 0.18, pw: 0.06, ph: 0.24 },
+          { type: 'stone', px: 0.78, py: 0.56, pw: 0.06, ph: 0.2 },
+          { type: 'stone', px: 0.24, py: 0.42, pw: 0.2, ph: 0.035 },
+          { type: 'stone', px: 0.56, py: 0.42, pw: 0.2, ph: 0.035 },
+          { type: 'stone', px: 0.46, py: 0.26, pw: 0.06, ph: 0.15 },
+          { type: 'stone', px: 0.46, py: 0.58, pw: 0.06, ph: 0.16 },
+          { type: 'wood', px: 0.3, py: 0.26, pw: 0.16, ph: 0.03, hp: 65 },
+          { type: 'wood', px: 0.58, py: 0.62, pw: 0.18, ph: 0.03, hp: 65 },
+          { type: 'wood', px: 0.42, py: 0.72, pw: 0.2, ph: 0.03, hp: 65 },
         ],
       },
       {
-        name: '第三关 · 中央堡垒',
-        brief: '堡垒敞开多向缺口，绕墙和破墙都有路线。',
+        name: '第三关 · 中环火力点',
+        brief: '中心环形石墙开出多个缺口，外围有短墙可掩护射击，路线更灵活。',
         layout: [
-          { type: 'stone', px: 0.34, py: 0.34, pw: 0.14, ph: 0.05 },
-          { type: 'stone', px: 0.52, py: 0.34, pw: 0.14, ph: 0.05 },
-          { type: 'stone', px: 0.34, py: 0.6, pw: 0.14, ph: 0.05 },
-          { type: 'stone', px: 0.52, py: 0.6, pw: 0.14, ph: 0.05 },
-          { type: 'stone', px: 0.48, py: 0.42, pw: 0.05, ph: 0.18 },
-          { type: 'wood', px: 0.18, py: 0.26, pw: 0.14, ph: 0.05, hp: 75 },
-          { type: 'wood', px: 0.68, py: 0.7, pw: 0.14, ph: 0.05, hp: 75 },
-          { type: 'wood', px: 0.26, py: 0.58, pw: 0.12, ph: 0.05, hp: 75 },
-          { type: 'wood', px: 0.64, py: 0.38, pw: 0.12, ph: 0.05, hp: 75 },
+          { type: 'stone', px: 0.34, py: 0.34, pw: 0.12, ph: 0.04 },
+          { type: 'stone', px: 0.54, py: 0.34, pw: 0.12, ph: 0.04 },
+          { type: 'stone', px: 0.34, py: 0.6, pw: 0.12, ph: 0.04 },
+          { type: 'stone', px: 0.54, py: 0.6, pw: 0.12, ph: 0.04 },
+          { type: 'stone', px: 0.48, py: 0.42, pw: 0.05, ph: 0.16 },
+          { type: 'stone', px: 0.26, py: 0.28, pw: 0.06, ph: 0.12 },
+          { type: 'stone', px: 0.66, py: 0.68, pw: 0.06, ph: 0.12 },
+          { type: 'wood', px: 0.2, py: 0.52, pw: 0.14, ph: 0.03, hp: 75 },
+          { type: 'wood', px: 0.68, py: 0.24, pw: 0.14, ph: 0.03, hp: 75 },
+          { type: 'wood', px: 0.28, py: 0.66, pw: 0.14, ph: 0.03, hp: 75 },
+          { type: 'wood', px: 0.64, py: 0.42, pw: 0.16, ph: 0.03, hp: 75 },
         ],
       },
     ];
+
+    function populateLevelSelect() {
+      if (!levelSelect) return;
+      const options = ['<option value="auto">自动轮换</option>', ...levelLayouts.map((lvl, idx) => `<option value="${idx}">${lvl.name}</option>`)].join('');
+      levelSelect.innerHTML = options;
+      levelSelect.value = state.levelMode === 'auto' ? 'auto' : String(state.levelIndex);
+    }
 
     function randRange(min, max) { return Math.random() * (max - min) + min; }
 
@@ -405,6 +456,43 @@
         h: item.ph * state.height,
         hp: item.type === 'wood' ? (item.hp || 60) : Infinity,
       };
+    }
+
+    function collidesWithObstacles(x, y, radius) {
+      return obstacles.some(ob => circleRectCollision(x, y, radius, ob));
+    }
+
+    function moveWithSlide(entity, dx, dy) {
+      const pad = arenaPadding + entity.size;
+      const targetX = Math.max(pad, Math.min(state.width - pad, entity.x + dx));
+      const targetY = Math.max(pad, Math.min(state.height - pad, entity.y + dy));
+      const hitFull = collidesWithObstacles(targetX, targetY, entity.size);
+      if (!hitFull) { entity.x = targetX; entity.y = targetY; return; }
+      const hitX = collidesWithObstacles(targetX, entity.y, entity.size);
+      const hitY = collidesWithObstacles(entity.x, targetY, entity.size);
+      if (!hitX) entity.x = targetX;
+      if (!hitY) entity.y = targetY;
+    }
+
+    function steerEnemy(enemy, target, delta) {
+      const base = Math.atan2(target.y - enemy.y, target.x - enemy.x);
+      const offsets = [0, 0.55, -0.55, 1.05, -1.05];
+      const step = enemy.speed * delta;
+      for (const off of offsets) {
+        const angle = base + off;
+        const nx = enemy.x + Math.cos(angle) * step;
+        const ny = enemy.y + Math.sin(angle) * step;
+        const pad = arenaPadding + enemy.size;
+        const clampedX = Math.max(pad, Math.min(state.width - pad, nx));
+        const clampedY = Math.max(pad, Math.min(state.height - pad, ny));
+        if (!collidesWithObstacles(clampedX, clampedY, enemy.size)) {
+          enemy.angle = angle;
+          enemy.x = clampedX;
+          enemy.y = clampedY;
+          return;
+        }
+      }
+      enemy.angle = base;
     }
 
     function createPlayer(id, color, turretColor) {
@@ -456,8 +544,7 @@
       const def = levelLayouts[index % levelLayouts.length];
       obstacles = def.layout.map(obstacleFromLayout);
       state.levelIndex = index % levelLayouts.length;
-      levelNameEl.textContent = def.name;
-      levelBriefEl.textContent = def.brief;
+      updateLevelUi();
       ensurePlayersSafe();
     }
 
@@ -485,7 +572,7 @@
       const diff = difficulties[state.difficulty];
       const size = 22;
       const margin = Math.max(arenaPadding + size + 6, size + 12);
-      const speed = (randRange(60, 110) + state.wave * 4) * diff.enemySpeed;
+      const speed = (randRange(50, 90) + state.wave * 3) * diff.enemySpeed;
       const hp = (30 + state.wave * 5) * diff.enemyHp;
       const minEnemyGap = size * 3.2;
 
@@ -522,7 +609,7 @@
 
       if (!pos) pos = { x: state.width / 2, y: state.height / 2 };
 
-      enemies.push({ x: pos.x, y: pos.y, angle: 0, size, speed, hp, reload: randRange(0.8, 1.4), fireCooldown: 0 });
+      enemies.push({ x: pos.x, y: pos.y, angle: 0, size, speed, hp, reload: randRange(1.1, 1.7) * diff.enemyFire, fireCooldown: 0 });
     }
 
     function spawnPickup() {
@@ -551,7 +638,7 @@
         for (let k = 0; k < 16; k++) addParticle(player.x, player.y, '#f87171');
         if (state.mode === 'pvp') {
           const winner = players.find(p => p.id !== player.id && p.alive);
-          showGameOver(winner ? `${winner.id === 'p1' ? '玩家一' : '玩家二'} 胜利！` : '平局');
+          showGameOver(winner ? `${winner.id === 'p1' ? '玩家一' : '玩家二'} 胜利！` : '平局', winner ? 'success' : 'warn');
           state.running = false;
         }
       }
@@ -578,14 +665,21 @@
     function resetGame() {
       enemies.length = 0; bullets.length = 0; particles.length = 0; pickups.length = 0;
       state.score = 0; state.wave = 1; state.combo = 0; state.running = true; state.lastTime = 0;
-      buildLevel(0);
+      state.gameOverTitle = '战斗结束';
+      state.gameOverTone = 'danger';
+      const startIndex = state.levelMode === 'auto' ? 0 : state.levelIndex;
+      buildLevel(startIndex);
+      state.levelIndex = startIndex;
       resetPlayers();
       state.inputs = {
         p1: { up:false, down:false, left:false, right:false, shoot:false, dash:false },
         p2: { up:false, down:false, left:false, right:false, shoot:false, dash:false },
       };
-      for (let i = 0; i < 5; i++) spawnEnemy();
+      if (state.mode !== 'pvp') {
+        for (let i = 0; i < 4; i++) spawnEnemy();
+      }
       updateDifficultyUi();
+      updateLevelUi();
     }
 
     function addParticle(x, y, color) {
@@ -611,15 +705,15 @@
       if (!state.started || !state.running) { updateHud(); return; }
       const livingPlayers = players.filter(p => p.alive);
       if (state.mode === 'pvp') {
-        if (livingPlayers.length === 0) { showGameOver('平局'); state.running = false; return; }
+        if (livingPlayers.length === 0) { showGameOver('平局', 'warn'); state.running = false; return; }
         if (livingPlayers.length === 1) {
           const winner = livingPlayers[0];
-          showGameOver(`${winner.id === 'p1' ? '玩家一' : '玩家二'} 胜利！`);
+          showGameOver(`${winner.id === 'p1' ? '玩家一' : '玩家二'} 胜利！`, 'success');
           state.running = false;
           return;
         }
       } else if (livingPlayers.length === 0) {
-        showGameOver(); state.running = false; return;
+        showGameOver('全军覆没', 'danger'); state.running = false; return;
       }
 
       livingPlayers.forEach(player => {
@@ -638,16 +732,7 @@
           for (let i = 0; i < 10; i++) addParticle(player.x, player.y, '#22d3ee');
         }
 
-        const prevX = player.x;
-        const prevY = player.y;
-        const pad = arenaPadding + player.size;
-        player.x = Math.max(pad, Math.min(state.width - pad, player.x + vx * delta));
-        player.y = Math.max(pad, Math.min(state.height - pad, player.y + vy * delta));
-        const hitObstacle = obstacles.some(ob => circleRectCollision(player.x, player.y, player.size, ob));
-        if (hitObstacle) {
-          player.x = prevX;
-          player.y = prevY;
-        }
+        moveWithSlide(player, vx * delta, vy * delta);
 
         player.fireCooldown -= delta;
         player.dashCooldown -= delta;
@@ -716,17 +801,7 @@
           }
           if (!target) continue;
 
-          e.angle = Math.atan2(target.y - e.y, target.x - e.x);
-          const ex = e.x + Math.cos(e.angle) * e.speed * delta;
-          const ey = e.y + Math.sin(e.angle) * e.speed * delta;
-          const bound = arenaPadding + e.size;
-          const clampedX = Math.max(bound, Math.min(state.width - bound, ex));
-          const clampedY = Math.max(bound, Math.min(state.height - bound, ey));
-          const willHit = obstacles.some(ob => circleRectCollision(clampedX, clampedY, e.size, ob));
-          if (!willHit) {
-            e.x = clampedX;
-            e.y = clampedY;
-          }
+          steerEnemy(e, target, delta);
 
           e.fireCooldown -= delta;
           if (e.fireCooldown <= 0) {
@@ -789,16 +864,20 @@
 
       if (state.mode !== 'pvp' && enemies.length === 0) {
         state.wave += 1;
-        const nextLevel = Math.floor((state.wave - 1) / 3) % levelLayouts.length;
-        if (nextLevel !== state.levelIndex) buildLevel(nextLevel);
+        if (state.levelMode === 'auto' && (state.wave - 1) % 3 === 0) {
+          const nextLevel = (state.levelIndex + 1) % levelLayouts.length;
+          buildLevel(nextLevel);
+        }
         const diff = difficulties[state.difficulty];
-        for (let i = 0; i < Math.round((3 + state.wave) * diff.spawnScale); i++) spawnEnemy();
+        const spawnCount = Math.max(3, Math.round((2 + state.wave * 0.9) * diff.spawnScale));
+        for (let i = 0; i < spawnCount; i++) spawnEnemy();
         if (Math.random() > 0.4) spawnPickup();
+        showBanner(`第 ${state.wave} 波来袭`, 'warn');
       }
 
       if (!players.some(p => p.alive)) {
         state.running = false;
-        showGameOver();
+        showGameOver('全军覆没', 'danger');
       }
 
       updateHud();
@@ -915,6 +994,9 @@
         drawTank(p.x, p.y, p.angle, p.color, p.size, p.turretColor || '#e2e8f0');
       });
       enemies.forEach(e => drawTank(e.x, e.y, e.angle, '#ef4444', e.size, '#fca5a5'));
+      if (!state.running && state.started) {
+        renderGameOver();
+      }
     }
 
     function loop(timestamp) {
@@ -949,7 +1031,29 @@
       difficultyLabel.textContent = difficulties[state.difficulty].label;
     }
 
-    function showGameOver(title = '战斗结束') {
+    function updateLevelUi() {
+      const def = levelLayouts[state.levelIndex % levelLayouts.length];
+      levelNameEl.textContent = def.name;
+      levelBriefEl.textContent = def.brief;
+      if (levelSelect) levelSelect.value = state.levelMode === 'auto' ? 'auto' : String(state.levelIndex);
+    }
+
+    function showBanner(text, tone = 'info', duration = 1800) {
+      if (!statusBanner) return;
+      statusBanner.className = 'status-banner';
+      statusBanner.textContent = text;
+      statusBanner.classList.add('show');
+      statusBanner.classList.remove('success', 'warn', 'danger');
+      if (tone === 'success') statusBanner.classList.add('success');
+      if (tone === 'warn') statusBanner.classList.add('warn');
+      if (tone === 'danger') statusBanner.classList.add('danger');
+      if (bannerTimer) clearTimeout(bannerTimer);
+      bannerTimer = setTimeout(() => statusBanner.classList.remove('show', 'success', 'warn', 'danger'), duration);
+    }
+
+    function renderGameOver(showToast = false) {
+      const title = state.gameOverTitle || '战斗结束';
+      const tone = state.gameOverTone || 'danger';
       ctx.save();
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
       ctx.fillRect(0,0,state.width,state.height);
@@ -961,6 +1065,13 @@
       ctx.fillText(`最终得分：${state.score} | 波次 ${state.wave}`, state.width/2, state.height/2 + 28);
       ctx.fillText('点击重新开局，或按 R 重置', state.width/2, state.height/2 + 60);
       ctx.restore();
+      if (showToast) showBanner(title, tone, 2600);
+    }
+
+    function showGameOver(title = '战斗结束', tone = 'danger') {
+      state.gameOverTitle = title;
+      state.gameOverTone = tone;
+      renderGameOver(true);
     }
 
     function handleKey(e, pressed) {
@@ -982,6 +1093,12 @@
       }
     }
 
+    const scrollBlockKeys = new Set(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright',' ','shift','.','/']);
+
+    function maybeBlockScroll(e) {
+      if (scrollBlockKeys.has(e.key.toLowerCase())) e.preventDefault();
+    }
+
     function togglePause() {
       if (!state.started) return;
       state.running = !state.running;
@@ -989,13 +1106,31 @@
     }
 
     function setupControls() {
-      window.addEventListener('keydown', (e) => { handleKey(e, true); });
-      window.addEventListener('keyup', (e) => { handleKey(e, false); });
+      window.addEventListener('keydown', (e) => { maybeBlockScroll(e); handleKey(e, true); });
+      window.addEventListener('keyup', (e) => { maybeBlockScroll(e); handleKey(e, false); });
       restartBtn.addEventListener('click', () => startGame(state.mode));
       pauseBtn.addEventListener('click', togglePause);
       difficultySelect.addEventListener('change', (e) => {
         state.difficulty = e.target.value;
         if (state.started) resetGame();
+      });
+      levelSelect?.addEventListener('change', (e) => {
+        const val = e.target.value;
+        if (val === 'auto') {
+          state.levelMode = 'auto';
+          state.levelIndex = 0;
+        } else {
+          state.levelMode = 'manual';
+          state.levelIndex = Number(val) || 0;
+        }
+        if (state.started) {
+          resetGame();
+          showBanner('关卡已切换，重新部署！', 'warn');
+        } else {
+          buildLevel(state.levelIndex);
+          updateLevelUi();
+          showBanner('关卡已设置，准备开战！', 'success', 1400);
+        }
       });
       startSolo?.addEventListener('click', () => startGame('solo'));
       startCoop?.addEventListener('click', () => startGame('coop'));
@@ -1058,6 +1193,7 @@
       state.running = true;
       startMenu?.classList.add('hidden');
       resetGame();
+      showBanner(mode === 'pvp' ? '双人对战开始！' : state.playerCount === 2 ? '协同作战，出发！' : '单人作战，祝你好运！', 'success', 1800);
     }
 
     function resize() {
@@ -1074,6 +1210,7 @@
 
     window.addEventListener('resize', resize);
 
+    populateLevelSelect();
     resize();
     setupControls();
     startMenu?.classList.remove('hidden');
