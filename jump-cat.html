@@ -278,7 +278,7 @@ class MainScene extends Phaser.Scene {
         for(let x = -1000; x < 20000; x += 500) {
             const m = this.add.image(x, 1000, 'mountain')
                 .setOrigin(0.5, 1)
-                .setScale(2.2) 
+                .setScale(2.2)
                 .setScrollFactor(0.05) // 极慢视差
                 .setDepth(-100)
                 .setAlpha(0.3)
@@ -290,23 +290,24 @@ class MainScene extends Phaser.Scene {
         for(let x = -1000; x < 20000; x += 900) {
             const m = this.add.image(x + 200, 1100, 'mountain')
                 .setOrigin(0.5, 1)
-                .setScale(3.2) 
-                .setScrollFactor(0.1) 
+                .setScale(3.2)
+                .setScrollFactor(0.1)
                 .setDepth(-95)
                 .setAlpha(0.5)
-                .setTint(0x5599cc); 
+                .setTint(0x5599cc);
             this.bgGroup.add(m);
         }
 
         // 2. 云朵：严格在天上 (High Clouds)
         for(let i=0; i<50; i++) {
             const x = Phaser.Math.Between(0, 20000);
-            const y = Phaser.Math.Between(-1000, 100); 
+            // 更接近视口的垂直范围，避免云层消失
+            const y = Phaser.Math.Between(-150, 200);
             const c = this.add.image(x, y, 'cloud')
                 .setScale(Phaser.Math.FloatBetween(1.5, 3))
                 .setScrollFactor(0.15)
                 .setDepth(-90)
-                .setAlpha(0.8);
+                .setAlpha(0.9);
             this.bgGroup.add(c);
         }
     }
@@ -391,7 +392,10 @@ class MainScene extends Phaser.Scene {
         g.setDepth(1); 
 
         const body = this.add.rectangle(x+w/2, y+h/2, w, h);
+        // 确保物理身体与视觉同步，避免“假地块”
+        this.physics.add.existing(body, true);
         this.platforms.add(body);
+        body.refreshBody();
         body.visual = g;
 
         if (spawnTree && Math.random() < 0.4) {
