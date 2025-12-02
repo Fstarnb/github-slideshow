@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Jump Cat: Order & Clean</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap');
+
+        html, body {
+            margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+            font-family: 'Fredoka One', cursive, sans-serif;
+            user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+            background: linear-gradient(to bottom, #4facfe 0%, #00f2fe 100%);
+        }
+
+        #game-container {
+            width: 100%; height: 100%; position: absolute; top: 0; left: 0;
+            display: flex; justify-content: center; align-items: center;
+            transition: opacity 0.3s ease, filter 0.3s ease;
+        }
+        #game-container.hidden-game { opacity: 0; filter: blur(6px); pointer-events: none; }
+
+        canvas { display: block; }
+
+        .ui-panel {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px);
+            transition: opacity 0.3s, visibility 0.3s;
+            z-index: 100; padding: 20px; box-sizing: border-box;
+        }
+        
+        .hidden { visibility: hidden; opacity: 0; pointer-events: none; }
+        
+        h1 { 
+            font-size: clamp(36px, 8vw, 70px); color: #fff; margin-bottom: 30px; 
+            text-shadow: 0 4px 8px rgba(0,0,0,0.4); text-align: center; line-height: 1.1;
+        }
+
+        h2 { color: #ffd700; margin-bottom: 30px; text-shadow: 2px 2px 0 #000; text-align: center;}
+
+        #hud {
+            position: absolute; top: 20px; left: 20px;
+            font-size: 22px; color: #fff; text-shadow: 2px 2px 0 #000;
+            pointer-events: none; z-index: 50;
+            background: rgba(0,0,0,0.3); padding: 8px 16px; border-radius: 20px;
+        }
+        
+        .btn-group { display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; width: 100%; max-width: 600px; }
+        .btn-col { flex-direction: column; align-items: center; }
+
+        .btn {
+            padding: 15px 30px; font-size: 20px; color: white; border: none; border-radius: 50px;
+            cursor: pointer; font-family: 'Fredoka One', sans-serif; text-transform: uppercase;
+            transition: transform 0.05s; min-width: 160px;
+            box-shadow: 0 6px 0 rgba(0,0,0,0.3); position: relative; margin-bottom: 8px;
+        }
+        .btn:active { transform: translateY(6px); box-shadow: 0 0 0 rgba(0,0,0,0) !important; }
+        
+        .btn-green { background: #76c442; box-shadow: 0 6px 0 #4a8a2a; }
+        .btn-orange { background: #ff9900; box-shadow: 0 6px 0 #cc7a00; }
+        .btn-blue { background: #4facfe; box-shadow: 0 6px 0 #0099cc; }
+        .btn-red { background: #ff5252; box-shadow: 0 6px 0 #b33939; }
+
+        .level-btn {
+            width: 60px; height: 60px; min-width: 0; border-radius: 15px;
+            font-size: 24px; display: flex; justify-content: center; align-items: center;
+            padding: 0; margin: 5px;
+        }
+
+        .tutorial { 
+            margin-top: 30px; color: #eee; font-size: 14px; 
+            background: rgba(0,0,0,0.3); padding: 8px 16px; border-radius: 15px; 
+            text-align: center;
+        }
+
+        .result-box {
+            background: rgba(255,255,255,0.1); padding: 20px; border-radius: 15px;
+            margin-bottom: 20px; text-align: center; color: white; font-size: 20px; width: 80%;
+        }
+        .big-text { font-size: 40px; color: #ffd700; display: block; margin: 10px 0; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+</head>
+<body>
+
+<div id="game-container" class="hidden-game"></div>
+<div id="hud" class="hidden">Distance: 0m</div>
+
+<!-- 1. 主菜单 -->
+<div id="menu-main" class="ui-panel">
+    <h1>🐱 JUMP CAT</h1>
+    <div class="btn-group btn-col">
+        <button class="btn btn-orange" onclick="GameApp.showLevelSelect()">Adventure</button>
+        <button class="btn btn-red" onclick="GameApp.launchGame('ENDLESS')">Endless Run</button>
+    </div>
+    <div class="tutorial">Hold Screen to Charge • Release to Jump</div>
+</div>
+
+<!-- 2. 关卡选择 -->
+<div id="menu-levels" class="ui-panel hidden">
+    <h2>SELECT LEVEL</h2>
+    <div class="btn-group">
+        <button class="btn btn-green level-btn" onclick="GameApp.launchGame('LEVEL', 1)">1</button>
+        <button class="btn btn-green level-btn" onclick="GameApp.launchGame('LEVEL', 2)">2</button>
+        <button class="btn btn-green level-btn" onclick="GameApp.launchGame('LEVEL', 3)">3</button>
+        <button class="btn btn-green level-btn" onclick="GameApp.launchGame('LEVEL', 4)">4</button>
+        <button class="btn btn-green level-btn" onclick="GameApp.launchGame('LEVEL', 5)">5</button>
+    </div>
+    <br>
+    <button class="btn btn-blue" onclick="GameApp.backToMain()">Back</button>
+</div>
+
+<!-- 3. 结果界面 -->
+<div id="menu-result" class="ui-panel hidden">
+    <h1 id="result-title">GAME OVER</h1>
+    <div class="result-box">
+        <span id="result-desc">Score: 0</span>
+    </div>
+    <div class="btn-group">
+        <button class="btn btn-blue" onclick="GameApp.backToMain()">Menu</button>
+        <button class="btn btn-green" onclick="GameApp.restart()">Again</button>
+    </div>
+</div>
+
+<script>
+// --- 游戏配置 ---
+const CONFIG = {
+    gravity: 1200, 
+    jumpPowerMin: 200,
+    jumpPowerMax: 900,
+    chargeRate: 20,
+    colors: {
+        grassTop: 0x98FB98, dirt: 0x5D4037, grass: 0x7CAFC2,
+        spike: 0xFF5252, cat: 0xFFA726,
+        treeTrunk: 0x5D4037, treeLayer1: 0x2E7D32,
+        bush: 0x4CAF50, mountain: 0xA2B9BC
+    }
+};
+
+const LEVEL_DATA = {
+    1: { length: 1500, minGap: 80, maxGap: 120, spikeProb: 0.0 },
+    2: { length: 2500, minGap: 100, maxGap: 150, spikeProb: 0.2 },
+    3: { length: 3500, minGap: 120, maxGap: 180, spikeProb: 0.4 },
+    4: { length: 4500, minGap: 150, maxGap: 220, spikeProb: 0.5 },
+    5: { length: 6000, minGap: 180, maxGap: 250, spikeProb: 0.7 }
+};
+
+class MainScene extends Phaser.Scene {
+    constructor() { super('MainScene'); }
+
+    preload() { this.generateTextures(); }
+
+    generateTextures() {
+        if (this.textures.exists('cat')) return;
+        
+        // 小猫
+        const cat = this.make.graphics({add: false});
+        cat.fillStyle(CONFIG.colors.cat, 1);
+        cat.fillRoundedRect(4, 18, 32, 22, 6); 
+        cat.fillTriangle(8, 20, 11, 6, 18, 20); cat.fillTriangle(22, 20, 29, 6, 32, 20);
+        cat.fillStyle(0xffffff, 1); cat.fillCircle(14, 26, 4); cat.fillCircle(28, 26, 4);
+        cat.fillStyle(0x000000, 1); cat.fillCircle(14, 26, 2); cat.fillCircle(28, 26, 2);
+        cat.fillStyle(CONFIG.colors.cat, 1); cat.fillCircle(6, 32, 5);
+        cat.generateTexture('cat', 40, 40);
+
+        // 地刺
+        const spike = this.make.graphics({add: false});
+        spike.fillStyle(CONFIG.colors.spike, 1);
+        spike.lineStyle(2, 0x000000, 1);
+        spike.beginPath(); spike.moveTo(0, 32); spike.lineTo(16, 0); spike.lineTo(32, 32); spike.closePath();
+        spike.fillPath(); spike.strokePath();
+        spike.generateTexture('spike', 32, 34);
+
+        // 山脉 (高分辨率，减少缩放锯齿)
+        const mount = this.make.graphics({add: false});
+        mount.fillStyle(CONFIG.colors.mountain, 1);
+        mount.beginPath(); mount.moveTo(0, 320); mount.lineTo(300, 0); mount.lineTo(600, 320); mount.closePath();
+        mount.fillPath();
+        mount.generateTexture('mountain', 600, 320);
+
+        // 云
+        const cloud = this.make.graphics({add: false});
+        cloud.fillStyle(0xffffff, 1);
+        cloud.fillCircle(20, 20, 20); cloud.fillCircle(45, 20, 25); cloud.fillCircle(70, 20, 20);
+        cloud.generateTexture('cloud', 100, 50);
+        
+        // 树
+        const tree = this.make.graphics({add: false});
+        tree.fillStyle(CONFIG.colors.treeLayer1, 1); tree.fillTriangle(0, 60, 20, 0, 40, 60);
+        tree.fillStyle(CONFIG.colors.treeTrunk, 1); tree.fillRect(15, 60, 10, 20);
+        tree.generateTexture('tree', 40, 80);
+    }
+
+    create() {
+        this.cameras.main.setBackgroundColor('rgba(0,0,0,0)');
+        this.cameras.main.setRoundPixels(false);
+        
+        // --- 核心修复：组的管理 ---
+        this.bgGroup = this.add.group();       // 背景
+        this.goalGroup = this.add.group();     // 终点 (专门的组，方便清理)
+        this.platforms = this.physics.add.staticGroup();
+        this.spikes = this.physics.add.staticGroup();
+        this.decorations = this.add.group();
+        
+        this.createBackgrounds(); // 生成整齐的背景
+        
+        this.scale.on('resize', this.resize, this);
+        this.resize(this.scale.gameSize);
+
+        this.isPlaying = false;
+    }
+
+    startRound(mode, level) {
+        this.mode = mode;
+        this.level = level;
+        this.isPlaying = true;
+        this.isGameOver = false;
+        this.score = 0;
+        this.lastPlatformY = 500;
+
+        // --- 核心修复：彻底清理旧对象 ---
+        this.platforms.clear(true, true);
+        this.spikes.clear(true, true);
+        this.decorations.clear(true, true);
+        this.goalGroup.clear(true, true); // 关键：清理上一局的旗帜
+        
+        if (this.player) this.player.destroy();
+
+        // 物理
+        this.physics.resume();
+        this.physics.world.setBounds(0, -3000, 100000, 5000);
+
+        // 玩家
+        this.player = this.physics.add.sprite(100, 300, 'cat');
+        this.player.setOrigin(0.5, 1);
+        this.player.body.setSize(28, 20);
+        this.player.body.setOffset(6, 20);
+        this.player.setBounce(0.0);
+        this.player.body.setDragX(2500);
+        this.player.setDepth(10);
+
+        this.cameras.main.startFollow(this.player, true, 0.15, 0.15);
+        this.resize(this.scale.gameSize);
+
+        this.physics.add.collider(this.player, this.platforms);
+        this.physics.add.overlap(this.player, this.spikes, this.hitSpike, null, this);
+
+        this.input.off('pointerdown');
+        this.input.off('pointerup');
+        this.input.on('pointerdown', this.startCharge, this);
+        this.input.on('pointerup', this.releaseJump, this);
+        this.isCharging = false;
+        this.chargePower = 0;
+        this.isHurt = false;
+
+        // 起始平台
+        this.createPlatform(0, 500, 800);
+        this.nextSpawnX = 800 + 150;
+
+        // 仅在关卡模式生成终点
+        if (this.mode === 'LEVEL') {
+            this.generateLevel(LEVEL_DATA[this.level]);
+        }
+        
+        // 无尽模式不需要在这里做额外生成，update里会自动做
+
+        document.getElementById('hud').classList.remove('hidden');
+    }
+
+    // --- 核心修复：整齐的背景生成 ---
+    createBackgrounds() {
+        this.bgGroup.clear(true, true);
+
+        // 1. 山脉：地平线对齐 (Orderly Mountains)
+        // 远景山脉
+        for(let x = -1000; x < 20000; x += 500) {
+            const m = this.add.image(x, 1000, 'mountain')
+                .setOrigin(0.5, 1)
+                .setScale(2.2)
+                .setScrollFactor(0.05) // 极慢视差
+                .setDepth(-100)
+                .setAlpha(0.3)
+                .setTint(0x88ccff); // 冷色调
+            this.bgGroup.add(m);
+        }
+
+        // 近景山脉
+        for(let x = -1000; x < 20000; x += 900) {
+            const m = this.add.image(x + 200, 1100, 'mountain')
+                .setOrigin(0.5, 1)
+                .setScale(3.2)
+                .setScrollFactor(0.1)
+                .setDepth(-95)
+                .setAlpha(0.5)
+                .setTint(0x5599cc);
+            this.bgGroup.add(m);
+        }
+
+        // 2. 云朵：严格在天上 (High Clouds)
+        for(let i=0; i<50; i++) {
+            const x = Phaser.Math.Between(0, 20000);
+            // 更接近视口的垂直范围，避免云层消失
+            const y = Phaser.Math.Between(-150, 200);
+            const c = this.add.image(x, y, 'cloud')
+                .setScale(Phaser.Math.FloatBetween(1.5, 3))
+                .setScrollFactor(0.15)
+                .setDepth(-90)
+                .setAlpha(0.9);
+            this.bgGroup.add(c);
+        }
+    }
+
+    // --- 智能平台高度计算 ---
+    getNextY(prevY) {
+        let newY = prevY + Phaser.Math.Between(-150, 150);
+        return Phaser.Math.Clamp(newY, 350, 700);
+    }
+
+    generateLevel(config) {
+        let x = this.nextSpawnX;
+        let y = this.lastPlatformY;
+        let dist = 0;
+        
+        while(dist < config.length) {
+            const w = Phaser.Math.Between(200, 450);
+            const gap = Phaser.Math.Between(config.minGap, config.maxGap);
+            y = this.getNextY(y);
+
+            this.createPlatform(x, y, w, true); 
+
+            if (Math.random() < config.spikeProb && w > 150) {
+                const s = this.spikes.create(x+w/2, y, 'spike');
+                s.setOrigin(0.5, 1); s.body.setSize(20,20); s.body.setOffset(6,14); s.setDepth(5);
+            }
+
+            x += (w+gap); dist += (w+gap);
+        }
+        
+        // --- 核心修复：旗帜放入 goalGroup ---
+        this.createPlatform(x, 500, 400);
+        
+        // 判定区
+        const zone = this.add.zone(x+200, 400, 100, 500);
+        this.physics.add.existing(zone, true);
+        this.physics.add.overlap(this.player, zone, this.win, null, this);
+        this.goalGroup.add(zone);
+
+        // 旗杆
+        const pole = this.add.rectangle(x+200, 350, 10, 300, 0xffffff).setDepth(4);
+        this.goalGroup.add(pole);
+
+        // 旗帜
+        const flag = this.add.rectangle(x+230, 210, 60, 40, 0xffd700).setDepth(4);
+        this.goalGroup.add(flag);
+    }
+
+    updateEndlessGen() {
+        if (this.nextSpawnX - this.player.x < 1500) {
+            const diff = Math.min(this.player.x / 10000, 1);
+            const gap = Phaser.Math.Between(120 + diff*100, 220 + diff*100);
+            const w = Phaser.Math.Between(200, 500 - diff*100);
+            
+            this.lastPlatformY = this.getNextY(this.lastPlatformY);
+            const y = this.lastPlatformY;
+
+            this.createPlatform(this.nextSpawnX + gap, y, w, true);
+
+            if (Math.random() < (0.2 + diff*0.4) && w > 150) {
+                 const s = this.spikes.create(this.nextSpawnX+gap+w/2, y, 'spike');
+                 s.setOrigin(0.5, 1); s.body.setSize(20,20); s.body.setOffset(6,14); s.setDepth(5);
+            }
+            
+            this.nextSpawnX += (gap + w);
+
+            // 清理
+            const cleanupX = this.player.x - 2500;
+            this.platforms.children.each(c => { if(c.x < cleanupX) { if(c.visual) c.visual.destroy(); c.destroy(); }});
+            this.decorations.children.each(c => { if(c.x < cleanupX) c.destroy(); });
+            this.spikes.children.each(c => { if(c.x < cleanupX) c.destroy(); });
+        }
+    }
+
+    createPlatform(x, y, w, spawnTree = false) {
+        const h = 2000;
+        const g = this.add.graphics();
+        
+        g.fillStyle(CONFIG.colors.grassTop, 1); g.fillRoundedRect(x, y, w, 24, 8);
+        g.fillStyle(CONFIG.colors.dirt, 1); g.fillRect(x, y+15, w, h);
+        g.fillStyle(CONFIG.colors.grass, 1); g.fillRect(x, y+20, w, 8);
+        g.setDepth(1); 
+
+        const body = this.add.rectangle(x+w/2, y+h/2, w, h);
+        // 确保物理身体与视觉同步，避免“假地块”
+        this.physics.add.existing(body, true);
+        this.platforms.add(body);
+        body.refreshBody();
+        body.visual = g;
+
+        if (spawnTree && Math.random() < 0.4) {
+            const treeX = x + Phaser.Math.Between(30, w-30);
+            const tree = this.add.image(treeX, y + 5, 'tree')
+                .setOrigin(0.5, 1)
+                .setDepth(0) 
+                .setScrollFactor(1);
+            this.decorations.add(tree);
+        }
+    }
+
+    update() {
+        if (!this.isPlaying || this.isGameOver || !this.player) return;
+        if (this.player.y > 1500) { this.gameOver(); return; }
+
+        const dist = Math.floor(Math.max(0, this.player.x / 10));
+        if (this.mode === 'ENDLESS') {
+            document.getElementById('hud').innerText = `Run: ${dist}m`;
+            this.updateEndlessGen();
+        } else {
+            const total = LEVEL_DATA[this.level].length;
+            const pct = Math.min(100, Math.floor((dist / (total/10)) * 100));
+            document.getElementById('hud').innerText = `Level ${this.level}: ${pct}%`;
+        }
+
+        const onGround = this.player.body.touching.down;
+        if (onGround) {
+            this.player.body.setDragX(2500);
+            if(!this.isCharging) this.player.rotation = Phaser.Math.Linear(this.player.rotation, 0, 0.2);
+        } else {
+            this.player.body.setDragX(0);
+            let tr = Math.min(Math.max(this.player.body.velocity.y * 0.0015, -0.5), 0.5);
+            this.player.rotation = Phaser.Math.Linear(this.player.rotation, tr, 0.1);
+        }
+
+        if (this.isCharging && onGround) {
+            this.chargePower += CONFIG.chargeRate;
+            if (this.chargePower > CONFIG.jumpPowerMax) this.chargePower = CONFIG.jumpPowerMax;
+            const d = 1 + (this.chargePower/CONFIG.jumpPowerMax)*0.4;
+            this.player.setScale(d, 2-d);
+            this.player.setTint(0xffaaaa);
+        } else if (onGround && !this.isCharging && !this.isHurt) {
+            if (Math.abs(this.player.scaleX - 1) > 0.01) {
+                this.player.scaleX = Phaser.Math.Linear(this.player.scaleX, 1, 0.2);
+                this.player.scaleY = Phaser.Math.Linear(this.player.scaleY, 1, 0.2);
+            } else { this.player.setScale(1); }
+            this.player.clearTint();
+        }
+    }
+
+    startCharge() {
+        if (this.player.body.touching.down && !this.isHurt) {
+            this.isCharging = true;
+            this.chargePower = CONFIG.jumpPowerMin;
+        }
+    }
+    releaseJump() {
+        if (this.isCharging && !this.isHurt) {
+            this.isCharging = false;
+            this.player.clearTint();
+            const vx = this.chargePower * 0.65;
+            const vy = -this.chargePower * 1.15;
+            this.player.setVelocity(vx, vy);
+            this.player.setScale(0.8, 1.2);
+            this.time.delayedCall(150, ()=> { if(!this.isHurt) this.player.setScale(1); });
+        }
+        this.isCharging = false;
+    }
+    hitSpike(player, spike) {
+        if (this.isHurt) return;
+        this.isHurt = true;
+        player.setTint(0xff0000);
+        player.setVelocity(-500, -350);
+        player.rotation = -0.5;
+        this.time.delayedCall(500, ()=> { if(!this.isGameOver) { this.isHurt=false; player.clearTint(); }});
+    }
+    gameOver() {
+        if (this.isGameOver) return;
+        this.isGameOver = true; 
+        this.isPlaying = false;
+        this.physics.pause();
+        GameApp.showResult('GAME OVER', `Score: ${Math.floor(this.player.x/10)}m`);
+    }
+    win() {
+        if (this.isGameOver) return;
+        this.isGameOver = true;
+        this.isPlaying = false;
+        this.physics.pause();
+        if (this.player) {
+            this.player.setVelocity(0, 0);
+            this.player.rotation = 0;
+        }
+        GameApp.showResult('VICTORY!', 'Level Complete!');
+    }
+    resize(gameSize) {
+        const w = gameSize.width;
+        const h = gameSize.height;
+        if (!w || !h) return;
+        let zoom = w / 750;
+        zoom = Phaser.Math.Clamp(zoom, 0.55, 1.2);
+        this.cameras.main.setZoom(zoom);
+        this.cameras.main.setFollowOffset(-(w/zoom)*0.22, (h/zoom)*0.15);
+    }
+}
+
+const GameApp = {
+    game: null,
+    init: function() {
+        const config = {
+            type: Phaser.AUTO,
+            scale: { mode: Phaser.Scale.RESIZE, width: '100%', height: '100%', autoCenter: Phaser.Scale.CENTER_BOTH },
+            parent: 'game-container',
+            transparent: true,
+            physics: { default: 'arcade', arcade: { gravity: { y: CONFIG.gravity }, debug: false, tileBias: 32 } },
+            scene: [MainScene]
+        };
+        this.game = new Phaser.Game(config);
+        this.setGameVisible(false);
+    },
+    setGameVisible: function(show) {
+        const container = document.getElementById('game-container');
+        if (!container) return;
+        container.classList.toggle('hidden-game', !show);
+        if (!show) {
+            const scene = this.game?.scene.getScene('MainScene');
+            if (scene) {
+                scene.isPlaying = false;
+                scene.physics.pause();
+            }
+        }
+    },
+    hideUI: function() { document.querySelectorAll('.ui-panel').forEach(el => el.classList.add('hidden')); },
+    showLevelSelect: function() { this.hideUI(); this.setGameVisible(false); document.getElementById('menu-levels').classList.remove('hidden'); },
+    backToMain: function() { 
+        this.hideUI(); 
+        this.setGameVisible(false); 
+        document.getElementById('menu-main').classList.remove('hidden'); 
+        document.getElementById('hud').classList.add('hidden');
+    },
+    launchGame: function(mode, level = 1) { 
+        this.hideUI(); 
+        this.setGameVisible(true);
+        const scene = this.game.scene.getScene('MainScene'); 
+        if (scene) scene.startRound(mode, level); 
+    },
+    showResult: function(title, desc) { document.getElementById('hud').classList.add('hidden'); document.getElementById('result-title').innerText = title; document.getElementById('result-desc').innerText = desc; document.getElementById('menu-result').classList.remove('hidden'); },
+    restart: function() { 
+        const scene = this.game.scene.getScene('MainScene'); 
+        if (scene) { scene.startRound(scene.mode, scene.level); this.hideUI(); this.setGameVisible(true); } 
+    }
+};
+
+window.onload = function() { GameApp.init(); };
+</script>
+</body>
+</html>
